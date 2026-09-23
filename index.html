@@ -1,0 +1,2098 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>แบบทดสอบวิชาพลศึกษา ม.6</title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+  <style>
+    body {
+      -webkit-user-select: none;
+      -moz-user-select: none;
+      -ms-user-select: none;
+      user-select: none;
+    }
+  </style>
+</head>
+
+<body class="bg-slate-100 min-h-screen text-slate-800 antialiased" oncontextmenu="return false;">
+
+<div class="max-w-3xl mx-auto py-8 px-4">
+
+  <!-- 1) หน้าลงทะเบียน -->
+  <div id="startScreen" class="bg-white p-8 rounded-2xl shadow-sm border border-slate-200">
+
+    <div class="text-center mb-6">
+      <div class="inline-block p-3 bg-blue-50 text-blue-600 rounded-full mb-3">
+        <svg xmlns="http://www.w3.org/2000/svg"
+             class="h-8 w-8"
+             fill="none"
+             viewBox="0 0 24 24"
+             stroke="currentColor">
+          <path stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+      </div>
+
+      <h1 class="text-2xl font-bold text-slate-900">
+        แบบทดสอบวิชาพลศึกษา ม.6
+      </h1>
+
+      <p class="text-slate-500 mt-1">
+        เรื่อง การออกกำลังกาย ลีลาศ และแอโรบิก (20 ข้อ)
+      </p>
+    </div>
+
+
+    <div class="bg-amber-50 border-l-4 border-amber-500 p-4 mb-6 text-sm text-amber-800 space-y-2 rounded-r">
+
+      <p class="font-semibold text-amber-900">
+        ข้อตกลงและกติกาการสอบ:
+      </p>
+
+      <ul class="list-disc list-inside space-y-1">
+        <li><strong>เวลาในการทำข้อสอบ:</strong> 45 นาที</li>
+        <li>ข้อสอบจะถูกสุ่มลำดับข้อสำหรับแต่ละการสอบ</li>
+        <li>เมื่อเริ่มสอบ ระบบจะพยายามเข้าสู่โหมดเต็มจอ (Fullscreen)</li>
+        <li><strong>ห้ามสลับแท็บ ย่อหน้าต่าง หรือปัดไปหน้าจออื่น</strong></li>
+        <li>
+          ระบบจะนับการออกจากหน้าข้อสอบเป็น “รอบ”
+          ไม่ว่าจะเกิดหลาย Browser Event พร้อมกันก็จะนับเพียง 1 ครั้ง
+        </li>
+        <li>
+          หากละเมิดครบ <strong>3 ครั้ง</strong>
+          ระบบจะส่งคำตอบทันที
+        </li>
+      </ul>
+    </div>
+
+
+    <div class="space-y-4 max-w-md mx-auto">
+
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">
+          ชื่อ - นามสกุล
+        </label>
+
+        <input type="text"
+               id="fullname"
+               autocomplete="name"
+               class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+               placeholder="เช่น นายรักเรียน ขยันยิ่ง">
+      </div>
+
+
+      <div class="grid grid-cols-2 gap-4">
+
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1">
+            ระดับชั้น
+          </label>
+
+          <input type="text"
+                 id="room"
+                 class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                 placeholder="เช่น 6/1">
+        </div>
+
+
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1">
+            เลขที่
+          </label>
+
+          <input type="number"
+                 id="no"
+                 min="1"
+                 class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                 placeholder="เช่น 15">
+        </div>
+
+      </div>
+
+
+      <button id="btnStart"
+              onclick="startExam()"
+              class="w-full mt-4 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-400 text-white font-semibold py-3 rounded-lg shadow-md transition duration-150">
+        เข้าสู่โหมดเต็มจอ และเริ่มทำข้อสอบ (45 นาที)
+      </button>
+
+      <p class="text-xs text-slate-400 text-center">
+        หมายเหตุ: Browser บางรุ่น โดยเฉพาะบางอุปกรณ์ iOS อาจไม่รองรับ Fullscreen ของหน้าเว็บ
+        แต่ระบบตรวจจับการสลับแท็บ/สลับแอปยังทำงาน
+      </p>
+    </div>
+
+  </div>
+
+
+
+  <!-- 2) หน้าทำข้อสอบ -->
+  <div id="examScreen" class="hidden">
+
+    <div class="sticky top-4 z-40 bg-white/95 backdrop-blur shadow-md border border-slate-200 rounded-xl p-4 mb-6 flex flex-wrap justify-between items-center gap-3">
+
+      <div>
+        <span class="text-xs text-slate-400 block">
+          ผู้เข้าสอบ
+        </span>
+
+        <span id="displayStudent"
+              class="font-semibold text-slate-800 text-sm md:text-base">
+        </span>
+      </div>
+
+
+      <div class="flex items-center space-x-3">
+
+        <div id="timerBadge"
+             class="flex items-center space-x-1.5 bg-blue-50 text-blue-700 border border-blue-200 font-semibold px-3 py-1.5 rounded-full text-sm transition-all duration-300">
+
+          <svg xmlns="http://www.w3.org/2000/svg"
+               class="h-4 w-4"
+               fill="none"
+               viewBox="0 0 24 24"
+               stroke="currentColor">
+            <path stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+
+          <span>เวลา:</span>
+
+          <span id="timerDisplay"
+                class="font-mono font-bold text-base">
+            45:00
+          </span>
+
+        </div>
+
+
+        <div class="bg-red-50 text-red-700 border border-red-200 text-xs font-semibold px-3 py-1.5 rounded-full">
+          สลับจอ:
+          <span id="violationCount"
+                class="font-bold">
+            0
+          </span>/3
+        </div>
+
+      </div>
+    </div>
+
+
+    <form id="quizForm"
+          onsubmit="confirmManualSubmit(event)"
+          class="space-y-6">
+
+      <div id="questionsContainer"
+           class="space-y-6">
+      </div>
+
+      <div class="pt-4 pb-12">
+
+        <button type="submit"
+                id="btnSubmit"
+                class="w-full bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-400 text-white font-semibold py-3.5 rounded-xl shadow-md transition duration-150 text-lg">
+          ส่งกระดาษคำตอบ
+        </button>
+
+      </div>
+
+    </form>
+
+  </div>
+
+
+
+  <!-- 3) หน้าผลสอบ -->
+  <div id="resultScreen"
+       class="hidden bg-white p-8 rounded-2xl shadow-sm border border-slate-200 text-center space-y-5">
+
+    <div id="resultIcon"
+         class="inline-block p-4 rounded-full">
+    </div>
+
+    <h2 id="resultTitle"
+        class="text-2xl font-bold">
+    </h2>
+
+
+    <div class="bg-slate-50 border border-slate-200 rounded-xl p-6 max-w-sm mx-auto space-y-3">
+
+      <p class="text-slate-500 text-sm">
+        คะแนนที่ทำได้
+      </p>
+
+      <p id="finalScore"
+         class="text-5xl font-extrabold text-blue-600">
+      </p>
+
+      <p id="finalViolations"
+         class="text-xs text-slate-400">
+      </p>
+
+    </div>
+
+
+    <p class="text-slate-600 text-sm">
+      ระบบได้บันทึกข้อมูลเรียบร้อยแล้ว
+      นักเรียนสามารถปิดหน้านี้ได้ทันที
+    </p>
+
+  </div>
+
+</div>
+
+
+<script>
+/* =========================================================
+   1. ตั้งค่า
+   ========================================================= */
+
+/*
+  นำ URL ที่ได้จาก Apps Script:
+  Deploy > New deployment > Web app > /exec
+
+  มาใส่ตรงนี้
+*/
+const API_URL =
+  "https://script.google.com/macros/s/AKfycbx7SfbgbXPnWlE25-C4Sw-siEhRjC5XfsjoyyU8uXtxmEirJytO06pJmC22ZX3h/exec";
+
+
+const EXAM_DURATION_MINUTES = 45;
+const VIOLATION_LIMIT = 3;
+
+
+/* =========================================================
+   2. ตัวแปรสถานะ
+   ========================================================= */
+
+let currentQuestions = [];
+
+let studentData = {};
+
+let attemptId = null;
+
+let examEndTime = null;
+
+let timerInterval = null;
+
+let violationCount = 0;
+
+let isExamActive = false;
+
+let hasSubmitted = false;
+
+
+/* =========================================================
+   3. Anti-Cheat State
+   ========================================================= */
+
+let antiCheatInitialized = false;
+
+/*
+  true = ตอนนี้อยู่ใน "เหตุการณ์ออกหน้าจอ 1 รอบ"
+  event visibilitychange + blur + fullscreenchange
+  จะไม่ถูกนับซ้ำ
+*/
+let violationEpisodeActive = false;
+
+let violationWarningOpen = false;
+
+let pendingViolationReason = null;
+
+let blurTimer = null;
+
+let recoveryTimer = null;
+
+/*
+  ใช้ตอนระบบกำลังสั่งเข้า Fullscreen เอง
+  เพื่อป้องกันการนับ event ของระบบเป็นการโกง
+*/
+let ignoreAntiCheatUntil = 0;
+
+
+/* =========================================================
+   4. JSONP API
+   GitHub Pages -> Google Apps Script
+   ไม่ใช้ google.script.run
+   และไม่ติดปัญหา CORS แบบ fetch ปกติ
+   ========================================================= */
+
+function apiCall(action, data = {}, timeoutMs = 15000) {
+
+  return new Promise((resolve, reject) => {
+
+    if (
+      !API_URL ||
+      API_URL.includes("PASTE_YOUR")
+    ) {
+      reject(
+        new Error(
+          "ยังไม่ได้ตั้งค่า API_URL ในไฟล์ index.html"
+        )
+      );
+      return;
+    }
+
+
+    const callbackName =
+      "__examApi_" +
+      Date.now() +
+      "_" +
+      Math.random()
+        .toString(36)
+        .slice(2);
+
+
+    const script =
+      document.createElement("script");
+
+
+    let finished = false;
+
+
+    const cleanup = () => {
+
+      if (finished) return;
+
+      finished = true;
+
+      clearTimeout(timeout);
+
+      try {
+        delete window[callbackName];
+      } catch (_) {
+        window[callbackName] = undefined;
+      }
+
+      if (script.parentNode) {
+        script.parentNode.removeChild(script);
+      }
+    };
+
+
+    window[callbackName] = (response) => {
+
+      cleanup();
+
+      if (
+        response &&
+        response.ok
+      ) {
+
+        resolve(response);
+
+      } else {
+
+        reject(
+          new Error(
+            response?.message ||
+            "ไม่สามารถติดต่อระบบบันทึกข้อมูลได้"
+          )
+        );
+      }
+    };
+
+
+    const params =
+      new URLSearchParams({
+        action: action,
+        callback: callbackName,
+        data: JSON.stringify(data),
+        _: String(Date.now())
+      });
+
+
+    script.src =
+      API_URL +
+      "?" +
+      params.toString();
+
+
+    script.async = true;
+
+
+    script.onerror = () => {
+
+      cleanup();
+
+      reject(
+        new Error(
+          "เชื่อมต่อ Google Apps Script ไม่สำเร็จ"
+        )
+      );
+    };
+
+
+    const timeout =
+      setTimeout(() => {
+
+        cleanup();
+
+        reject(
+          new Error(
+            "การเชื่อมต่อหมดเวลา กรุณาตรวจสอบอินเทอร์เน็ต"
+          )
+        );
+
+      }, timeoutMs);
+
+
+    document.body.appendChild(script);
+
+  });
+}
+
+
+/* =========================================================
+   5. Fullscreen Helper
+   ========================================================= */
+
+function getFullscreenElement() {
+
+  return (
+    document.fullscreenElement ||
+    document.webkitFullscreenElement ||
+    null
+  );
+}
+
+
+function isFullscreenSupported() {
+
+  const el =
+    document.documentElement;
+
+  return !!(
+    el.requestFullscreen ||
+    el.webkitRequestFullscreen
+  );
+}
+
+
+function requestExamFullscreen() {
+
+  const el =
+    document.documentElement;
+
+
+  if (el.requestFullscreen) {
+
+    return el.requestFullscreen();
+
+  }
+
+
+  if (el.webkitRequestFullscreen) {
+
+    el.webkitRequestFullscreen();
+
+    return Promise.resolve();
+  }
+
+
+  return Promise.resolve();
+}
+
+
+/* =========================================================
+   6. เริ่มสอบ
+   ========================================================= */
+
+async function startExam() {
+
+  const fullname =
+    document
+      .getElementById("fullname")
+      .value
+      .trim();
+
+
+  const room =
+    document
+      .getElementById("room")
+      .value
+      .trim();
+
+
+  const no =
+    document
+      .getElementById("no")
+      .value
+      .trim();
+
+
+  if (
+    !fullname ||
+    !room ||
+    !no
+  ) {
+
+    Swal.fire(
+      "กรุณากรอกข้อมูล",
+      "กรุณาระบุชื่อ-นามสกุล ชั้น และเลขที่ ให้ครบถ้วน",
+      "warning"
+    );
+
+    return;
+  }
+
+
+  studentData = {
+    fullname,
+    room,
+    no
+  };
+
+
+  localStorage.setItem(
+    "pe_exam_student",
+    JSON.stringify(studentData)
+  );
+
+
+  const btnStart =
+    document.getElementById("btnStart");
+
+
+  btnStart.disabled = true;
+
+
+  /*
+    ติด Listener ไว้ก่อน
+    แต่ยังไม่นับเพราะ isExamActive = false
+  */
+  initAntiCheatListeners();
+
+
+  /*
+    requestFullscreen ต้องเกิดใกล้กับ user click
+    จึงทำก่อนเรียก API
+  */
+  ignoreAntiCheatUntil =
+    Date.now() + 3000;
+
+
+  try {
+
+    await requestExamFullscreen();
+
+  } catch (err) {
+
+    console.log(
+      "Fullscreen start:",
+      err
+    );
+  }
+
+
+  Swal.fire({
+    title: "กำลังเตรียมข้อสอบ...",
+    text: "กรุณารอสักครู่",
+    allowOutsideClick: false,
+    allowEscapeKey: false,
+    didOpen: () => {
+      Swal.showLoading();
+    }
+  });
+
+
+  try {
+
+    const res =
+      await apiCall(
+        "start",
+        studentData
+      );
+
+
+    Swal.close();
+
+
+    /*
+      เคยส่งไปแล้ว
+    */
+    if (res.status === "SUBMITTED") {
+
+      hasSubmitted = true;
+
+      showResult(
+        Number(res.score || 0),
+        Number(res.violations || 0),
+        "already"
+      );
+
+      return;
+    }
+
+
+    attemptId =
+      res.attemptId;
+
+
+    currentQuestions =
+      Array.isArray(res.questions)
+        ? res.questions
+        : [];
+
+
+    violationCount =
+      Number(res.violations || 0);
+
+
+    examEndTime =
+      Number(res.endTimeMs);
+
+
+    document
+      .getElementById("violationCount")
+      .innerText =
+      violationCount;
+
+
+    document
+      .getElementById("displayStudent")
+      .innerText =
+      `${fullname} (ม.${room} เลขที่ ${no})`;
+
+
+    renderQuestions();
+
+
+    restoreDraftAnswers();
+
+
+    document
+      .getElementById("startScreen")
+      .classList
+      .add("hidden");
+
+
+    document
+      .getElementById("examScreen")
+      .classList
+      .remove("hidden");
+
+
+    /*
+      ให้ browser นิ่งก่อนเริ่มตรวจจริง
+    */
+    ignoreAntiCheatUntil =
+      Date.now() + 1200;
+
+
+    isExamActive = true;
+
+    violationEpisodeActive = false;
+
+
+    startTimer();
+
+
+    /*
+      ถ้าเป็น attempt ที่หมดเวลา/ถูกล็อกจากครั้งก่อน
+      ให้ restore draft ก่อน แล้วส่งทันที
+    */
+    if (res.status === "LOCKED") {
+
+      setTimeout(
+        () => submitExam("violation"),
+        500
+      );
+
+    } else if (res.status === "TIMEOUT") {
+
+      setTimeout(
+        () => submitExam("timeout"),
+        500
+      );
+    }
+
+
+  } catch (err) {
+
+    Swal.fire(
+      "เริ่มสอบไม่สำเร็จ",
+      err.message,
+      "error"
+    );
+
+
+    btnStart.disabled = false;
+  }
+}
+
+
+/* =========================================================
+   7. แสดงข้อสอบ
+   ========================================================= */
+
+function renderQuestions() {
+
+  const container =
+    document.getElementById(
+      "questionsContainer"
+    );
+
+
+  container.innerHTML =
+    currentQuestions
+      .map(
+        (item, idx) => `
+
+        <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+
+          <div class="flex items-start gap-3 mb-4">
+
+            <span class="inline-flex items-center justify-center bg-blue-100 text-blue-800 text-xs font-bold px-2.5 py-1 rounded-md mt-0.5 whitespace-nowrap">
+              ข้อที่ ${idx + 1}
+            </span>
+
+            <p class="font-medium text-slate-900 leading-relaxed text-base">
+              ${escapeHtml(item.q)}
+            </p>
+
+          </div>
+
+
+          <div class="space-y-2.5 pl-0 md:pl-2">
+
+            ${item.choices
+              .map((choice) => {
+
+                const choiceLetter =
+                  choice.substring(0, 1);
+
+                const radioId =
+                  `${item.id}_${choiceLetter}`;
+
+                return `
+
+                <label for="${radioId}"
+                       class="flex items-center space-x-3 p-3 rounded-lg border border-slate-100 hover:bg-blue-50/50 cursor-pointer transition">
+
+                  <input type="radio"
+                         id="${radioId}"
+                         name="q_${item.id}"
+                         value="${choiceLetter}"
+                         class="w-4 h-4 text-blue-600 focus:ring-blue-500">
+
+                  <span class="text-sm text-slate-700 leading-relaxed">
+                    ${escapeHtml(choice)}
+                  </span>
+
+                </label>
+                `;
+
+              })
+              .join("")}
+
+          </div>
+
+        </div>
+      `
+      )
+      .join("");
+}
+
+
+/* =========================================================
+   8. Autosave คำตอบไว้ใน Browser
+   ช่วยกรณี Refresh / เน็ตหลุด
+   ========================================================= */
+
+function getDraftKey() {
+
+  return attemptId
+    ? `pe_exam_draft_${attemptId}`
+    : null;
+}
+
+
+function collectAnswers() {
+
+  const answers = {};
+
+
+  currentQuestions.forEach((item) => {
+
+    const selected =
+      document.querySelector(
+        `input[name="q_${item.id}"]:checked`
+      );
+
+
+    if (selected) {
+      answers[item.id] =
+        selected.value;
+    }
+  });
+
+
+  return answers;
+}
+
+
+function saveDraftAnswers() {
+
+  const key =
+    getDraftKey();
+
+
+  if (!key) return;
+
+
+  const payload = {
+    savedAt: Date.now(),
+    answers: collectAnswers()
+  };
+
+
+  localStorage.setItem(
+    key,
+    JSON.stringify(payload)
+  );
+}
+
+
+function restoreDraftAnswers() {
+
+  const key =
+    getDraftKey();
+
+
+  if (!key) return;
+
+
+  try {
+
+    const raw =
+      localStorage.getItem(key);
+
+
+    if (!raw) return;
+
+
+    const saved =
+      JSON.parse(raw);
+
+
+    const answers =
+      saved.answers || {};
+
+
+    Object.entries(answers)
+      .forEach(
+        ([questionId, value]) => {
+
+          const input =
+            document.querySelector(
+              `input[name="q_${questionId}"][value="${value}"]`
+            );
+
+
+          if (input) {
+            input.checked = true;
+          }
+        }
+      );
+
+  } catch (err) {
+
+    console.log(
+      "Restore draft error:",
+      err
+    );
+  }
+}
+
+
+document
+  .getElementById("quizForm")
+  .addEventListener(
+    "change",
+    saveDraftAnswers
+  );
+
+
+/* =========================================================
+   9. Timer
+   ใช้เวลาสิ้นสุดจริงจาก Server
+   ไม่ใช้ timeLeft--
+   จึงไม่เพี้ยนตอน Browser throttle setInterval
+   ========================================================= */
+
+function startTimer() {
+
+  updateRealTimer();
+
+
+  timerInterval =
+    setInterval(
+      updateRealTimer,
+      500
+    );
+}
+
+
+function updateRealTimer() {
+
+  if (
+    hasSubmitted ||
+    !examEndTime
+  ) {
+    return;
+  }
+
+
+  const remainingMs =
+    Math.max(
+      0,
+      examEndTime - Date.now()
+    );
+
+
+  const timeLeft =
+    Math.ceil(
+      remainingMs / 1000
+    );
+
+
+  updateTimerDisplay(
+    timeLeft
+  );
+
+
+  if (timeLeft <= 300) {
+
+    const badge =
+      document.getElementById(
+        "timerBadge"
+      );
+
+
+    badge.className =
+      "flex items-center space-x-1.5 " +
+      "bg-red-100 text-red-700 " +
+      "border border-red-300 " +
+      "font-semibold px-3 py-1.5 " +
+      "rounded-full text-sm animate-pulse";
+  }
+
+
+  if (remainingMs <= 0) {
+
+    clearInterval(
+      timerInterval
+    );
+
+
+    isExamActive = false;
+
+
+    submitExam(
+      "timeout"
+    );
+  }
+}
+
+
+function updateTimerDisplay(timeLeft) {
+
+  const minutes =
+    Math.floor(
+      Math.max(0, timeLeft) / 60
+    );
+
+
+  const seconds =
+    Math.max(
+      0,
+      timeLeft
+    ) % 60;
+
+
+  const formatted =
+    `${String(minutes).padStart(2, "0")}:` +
+    `${String(seconds).padStart(2, "0")}`;
+
+
+  document
+    .getElementById("timerDisplay")
+    .innerText =
+    formatted;
+}
+
+
+/* =========================================================
+   10. Anti-Cheat
+   ========================================================= */
+
+function antiCheatReady() {
+
+  if (!isExamActive) return false;
+
+  if (hasSubmitted) return false;
+
+  if (
+    Date.now() <
+    ignoreAntiCheatUntil
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+
+function initAntiCheatListeners() {
+
+  if (antiCheatInitialized) {
+    return;
+  }
+
+
+  antiCheatInitialized = true;
+
+
+  /*
+    A) สลับแท็บ / ย่อ Browser / สลับ App
+  */
+  document.addEventListener(
+    "visibilitychange",
+    () => {
+
+      if (!antiCheatReady()) {
+        return;
+      }
+
+
+      if (
+        document.visibilityState ===
+        "hidden"
+      ) {
+
+        registerViolation(
+          "ตรวจพบการสลับแท็บ ย่อหน้าต่าง หรือออกจากหน้าข้อสอบ"
+        );
+
+      } else {
+
+        showPendingViolationWarning();
+
+        scheduleViolationRecovery();
+
+        /*
+          ถ้ากลับเข้าหน้าแล้วเวลาเลย
+          update timer ทันที
+        */
+        updateRealTimer();
+      }
+    }
+  );
+
+
+  /*
+    B) Blur
+    event นี้ไม่นิ่งที่สุด
+    จึงรอ 900 ms ก่อนตัดสิน
+  */
+  window.addEventListener(
+    "blur",
+    () => {
+
+      if (!antiCheatReady()) {
+        return;
+      }
+
+
+      clearTimeout(
+        blurTimer
+      );
+
+
+      blurTimer =
+        setTimeout(
+          () => {
+
+            if (!antiCheatReady()) {
+              return;
+            }
+
+
+            /*
+              Event อื่นนับรอบนี้ไปแล้ว
+            */
+            if (
+              violationEpisodeActive
+            ) {
+              return;
+            }
+
+
+            if (
+              document.visibilityState ===
+                "visible" &&
+              !document.hasFocus()
+            ) {
+
+              registerViolation(
+                "ตรวจพบการออกจากหน้าต่างข้อสอบ"
+              );
+            }
+
+          },
+          900
+        );
+    }
+  );
+
+
+  /*
+    C) Focus กลับมา
+  */
+  window.addEventListener(
+    "focus",
+    () => {
+
+      clearTimeout(
+        blurTimer
+      );
+
+
+      showPendingViolationWarning();
+
+      scheduleViolationRecovery();
+    }
+  );
+
+
+  /*
+    D) Fullscreen
+  */
+  const fullscreenHandler = () => {
+
+    if (!antiCheatReady()) {
+      return;
+    }
+
+
+    if (
+      isFullscreenSupported() &&
+      !getFullscreenElement()
+    ) {
+
+      registerViolation(
+        "ตรวจพบการออกจากโหมดเต็มจอ"
+      );
+
+    } else {
+
+      scheduleViolationRecovery();
+    }
+  };
+
+
+  document.addEventListener(
+    "fullscreenchange",
+    fullscreenHandler
+  );
+
+
+  document.addEventListener(
+    "webkitfullscreenchange",
+    fullscreenHandler
+  );
+}
+
+
+/* =========================================================
+   11. นับการละเมิด 1 ครั้งต่อ 1 Episode
+   ========================================================= */
+
+async function registerViolation(reason) {
+
+  if (!antiCheatReady()) {
+    return;
+  }
+
+
+  /*
+    จุดสำคัญ:
+    visibilitychange + blur + fullscreenchange
+    ที่เกิดจากการออกจอครั้งเดียว
+    จะเข้ามาที่นี่ได้เพียงรอบแรก
+  */
+  if (
+    violationEpisodeActive
+  ) {
+    return;
+  }
+
+
+  violationEpisodeActive = true;
+
+
+  clearTimeout(
+    recoveryTimer
+  );
+
+
+  /*
+    เพิ่มแบบ Optimistic ก่อน
+    เพื่อให้ UI ตอบสนองทันที
+  */
+  violationCount++;
+
+
+  document
+    .getElementById(
+      "violationCount"
+    )
+    .innerText =
+    violationCount;
+
+
+  pendingViolationReason =
+    reason;
+
+
+  const eventId =
+    createEventId();
+
+
+  /*
+    บันทึก Server แยกต่างหาก
+    เพื่อให้ Refresh แล้วจำนวนครั้งไม่รีเซ็ต
+  */
+  apiCall(
+    "violation",
+    {
+      attemptId,
+      eventId,
+      reason
+    }
+  )
+    .then((res) => {
+
+      violationCount =
+        Math.max(
+          violationCount,
+          Number(
+            res.violations || 0
+          )
+        );
+
+
+      document
+        .getElementById(
+          "violationCount"
+        )
+        .innerText =
+        violationCount;
+
+
+      if (
+        res.terminate === true &&
+        !hasSubmitted
+      ) {
+
+        submitExam(
+          res.reason === "timeout"
+            ? "timeout"
+            : "violation"
+        );
+      }
+    })
+    .catch((err) => {
+
+      /*
+        ถ้าเน็ตหลุด:
+        ยังเก็บจำนวนใน Client ไว้
+        และตอน submit จะส่ง clientViolations ไปด้วย
+      */
+      console.log(
+        "Violation log failed:",
+        err
+      );
+    });
+
+
+  /*
+    ครบ 3 ครั้ง:
+    ส่งทันที ไม่ต้องรอ event อื่น
+  */
+  if (
+    violationCount >=
+    VIOLATION_LIMIT
+  ) {
+
+    isExamActive = false;
+
+
+    clearInterval(
+      timerInterval
+    );
+
+
+    submitExam(
+      "violation"
+    );
+
+
+    return;
+  }
+
+
+  showPendingViolationWarning();
+}
+
+
+/* =========================================================
+   12. Popup เตือน
+   ========================================================= */
+
+function showPendingViolationWarning() {
+
+  if (!isExamActive) return;
+
+  if (hasSubmitted) return;
+
+  if (!pendingViolationReason) {
+    return;
+  }
+
+
+  /*
+    ถ้ายังอยู่นอกหน้า
+    รอกลับมาก่อน
+  */
+  if (
+    document.visibilityState !==
+    "visible"
+  ) {
+    return;
+  }
+
+
+  if (violationWarningOpen) {
+    return;
+  }
+
+
+  violationWarningOpen = true;
+
+
+  const reason =
+    pendingViolationReason;
+
+
+  pendingViolationReason =
+    null;
+
+
+  Swal.fire({
+    icon: "warning",
+    title: "คำเตือนการละเมิด",
+    html:
+      escapeHtml(reason) +
+      "<br><br>" +
+      "ครั้งที่ <strong>" +
+      violationCount +
+      "/" +
+      VIOLATION_LIMIT +
+      "</strong>",
+    confirmButtonColor:
+      "#ef4444",
+    confirmButtonText:
+      "กลับเข้าสู่ข้อสอบ",
+    allowOutsideClick: false,
+    allowEscapeKey: false
+  })
+    .then(
+      async () => {
+
+        violationWarningOpen =
+          false;
+
+
+        if (
+          !isExamActive ||
+          hasSubmitted
+        ) {
+          return;
+        }
+
+
+        /*
+          ขอ Fullscreen กลับ
+          การกดปุ่ม Swal ถือเป็น user gesture
+        */
+        if (
+          isFullscreenSupported() &&
+          !getFullscreenElement()
+        ) {
+
+          ignoreAntiCheatUntil =
+            Date.now() + 1600;
+
+
+          try {
+
+            await requestExamFullscreen();
+
+          } catch (err) {
+
+            console.log(
+              "Return fullscreen:",
+              err
+            );
+          }
+        }
+
+
+        setTimeout(
+          scheduleViolationRecovery,
+          300
+        );
+      }
+    );
+}
+
+
+/* =========================================================
+   13. จบรอบ Violation
+   ต้องกลับมา:
+   - visible
+   - focused
+   - fullscreen (ถ้ารองรับ)
+   - popup ปิดแล้ว
+   แล้วต้องนิ่ง 1.2 วินาที
+   ========================================================= */
+
+function scheduleViolationRecovery() {
+
+  clearTimeout(
+    recoveryTimer
+  );
+
+
+  recoveryTimer =
+    setTimeout(
+      () => {
+
+        if (
+          !isExamActive ||
+          hasSubmitted
+        ) {
+          return;
+        }
+
+
+        if (
+          violationWarningOpen ||
+          pendingViolationReason
+        ) {
+          return;
+        }
+
+
+        const visible =
+          document.visibilityState ===
+          "visible";
+
+
+        const focused =
+          document.hasFocus();
+
+
+        const fullscreenOK =
+          !isFullscreenSupported() ||
+          !!getFullscreenElement();
+
+
+        if (
+          visible &&
+          focused &&
+          fullscreenOK
+        ) {
+
+          violationEpisodeActive =
+            false;
+
+
+          console.log(
+            "Anti-cheat: พร้อมตรวจรอบถัดไป"
+          );
+        }
+
+      },
+      1200
+    );
+}
+
+
+/* =========================================================
+   14. ยืนยันส่งด้วยตนเอง
+   ========================================================= */
+
+function confirmManualSubmit(e) {
+
+  e.preventDefault();
+
+
+  if (hasSubmitted) {
+    return;
+  }
+
+
+  const answers =
+    collectAnswers();
+
+
+  const answeredCount =
+    Object.keys(
+      answers
+    ).length;
+
+
+  let alertText =
+    "คุณต้องการส่งกระดาษคำตอบใช่หรือไม่?";
+
+
+  if (
+    answeredCount <
+    currentQuestions.length
+  ) {
+
+    alertText =
+      `คุณตอบไปเพียง ${answeredCount} ` +
+      `จาก ${currentQuestions.length} ข้อ ` +
+      "ยืนยันจะส่งหรือไม่?";
+  }
+
+
+  Swal.fire({
+    title:
+      "ยืนยันการส่งข้อสอบ",
+    text:
+      alertText,
+    icon:
+      "question",
+    showCancelButton:
+      true,
+    confirmButtonColor:
+      "#059669",
+    cancelButtonColor:
+      "#64748b",
+    confirmButtonText:
+      "ยืนยัน ส่งข้อสอบ",
+    cancelButtonText:
+      "กลับไปตรวจสอบ",
+    allowOutsideClick:
+      false
+  })
+    .then(
+      (result) => {
+
+        if (
+          result.isConfirmed
+        ) {
+
+          submitExam(
+            "manual"
+          );
+        }
+      }
+    );
+}
+
+
+/* =========================================================
+   15. ส่งคำตอบ
+   คะแนนตรวจที่ Server เท่านั้น
+   ไม่มี Answer Key อยู่ใน GitHub
+   ========================================================= */
+
+async function submitExam(reason = "manual") {
+
+  if (hasSubmitted) {
+    return;
+  }
+
+
+  hasSubmitted = true;
+
+  isExamActive = false;
+
+
+  clearInterval(
+    timerInterval
+  );
+
+
+  clearTimeout(
+    blurTimer
+  );
+
+
+  clearTimeout(
+    recoveryTimer
+  );
+
+
+  saveDraftAnswers();
+
+
+  const btnSubmit =
+    document.getElementById(
+      "btnSubmit"
+    );
+
+
+  btnSubmit.disabled = true;
+
+
+  document
+    .querySelectorAll(
+      "#quizForm input"
+    )
+    .forEach(
+      (input) => {
+        input.disabled = true;
+      }
+    );
+
+
+  Swal.fire({
+    title:
+      reason === "violation"
+        ? "ระบบกำลังตัดสิทธิ์และส่งคำตอบ..."
+        : reason === "timeout"
+        ? "หมดเวลา ระบบกำลังส่งคำตอบ..."
+        : "กำลังบันทึกคะแนน...",
+    text:
+      "กรุณารอสักครู่ ห้ามปิดหน้าต่าง",
+    allowOutsideClick:
+      false,
+    allowEscapeKey:
+      false,
+    showConfirmButton:
+      false,
+    didOpen: () => {
+      Swal.showLoading();
+    }
+  });
+
+
+  try {
+
+    const answers =
+      collectAnswers();
+
+
+    const res =
+      await apiCall(
+        "submit",
+        {
+          attemptId,
+          answers,
+          reason,
+          clientViolations:
+            violationCount
+        },
+        20000
+      );
+
+
+    Swal.close();
+
+
+    violationCount =
+      Number(
+        res.violations || 0
+      );
+
+
+    const key =
+      getDraftKey();
+
+
+    if (key) {
+      localStorage.removeItem(
+        key
+      );
+    }
+
+
+    showResult(
+      Number(
+        res.score || 0
+      ),
+      violationCount,
+      reason
+    );
+
+
+  } catch (err) {
+
+    hasSubmitted = false;
+
+
+    btnSubmit.disabled = false;
+
+
+    document
+      .querySelectorAll(
+        "#quizForm input"
+      )
+      .forEach(
+        (input) => {
+          input.disabled = false;
+        }
+      );
+
+
+    Swal.fire({
+      icon: "error",
+      title:
+        "บันทึกข้อมูลไม่สำเร็จ",
+      text:
+        err.message,
+      confirmButtonText:
+        "ลองส่งอีกครั้ง",
+      allowOutsideClick:
+        false,
+      allowEscapeKey:
+        false
+    })
+      .then(
+        () => {
+
+          submitExam(
+            reason
+          );
+        }
+      );
+  }
+}
+
+
+/* =========================================================
+   16. แสดงผล
+   ========================================================= */
+
+function showResult(
+  score,
+  violations,
+  reason
+) {
+
+  isExamActive = false;
+
+  hasSubmitted = true;
+
+
+  document
+    .getElementById("startScreen")
+    .classList
+    .add("hidden");
+
+
+  document
+    .getElementById("examScreen")
+    .classList
+    .add("hidden");
+
+
+  const resultScreen =
+    document.getElementById(
+      "resultScreen"
+    );
+
+
+  resultScreen
+    .classList
+    .remove("hidden");
+
+
+  const iconContainer =
+    document.getElementById(
+      "resultIcon"
+    );
+
+
+  const title =
+    document.getElementById(
+      "resultTitle"
+    );
+
+
+  if (
+    reason === "violation" ||
+    violations >=
+      VIOLATION_LIMIT
+  ) {
+
+    iconContainer.className =
+      "inline-block p-4 rounded-full bg-red-100 text-red-600 mb-2";
+
+
+    iconContainer.innerHTML =
+      `<svg class="w-12 h-12"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24">
+         <path stroke-linecap="round"
+               stroke-linejoin="round"
+               stroke-width="2"
+               d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+       </svg>`;
+
+
+    title.innerText =
+      "ส่งข้อสอบเนื่องจากละเมิดกฎ";
+
+
+    title.className =
+      "text-2xl font-bold text-red-600";
+
+
+  } else if (
+    reason === "timeout"
+  ) {
+
+    iconContainer.className =
+      "inline-block p-4 rounded-full bg-amber-100 text-amber-600 mb-2";
+
+
+    iconContainer.innerHTML =
+      `<svg class="w-12 h-12"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24">
+         <path stroke-linecap="round"
+               stroke-linejoin="round"
+               stroke-width="2"
+               d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+       </svg>`;
+
+
+    title.innerText =
+      "หมดเวลาและส่งข้อสอบแล้ว";
+
+
+    title.className =
+      "text-2xl font-bold text-amber-600";
+
+
+  } else {
+
+    iconContainer.className =
+      "inline-block p-4 rounded-full bg-emerald-100 text-emerald-600 mb-2";
+
+
+    iconContainer.innerHTML =
+      `<svg class="w-12 h-12"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24">
+         <path stroke-linecap="round"
+               stroke-linejoin="round"
+               stroke-width="2"
+               d="M5 13l4 4L19 7"/>
+       </svg>`;
+
+
+    title.innerText =
+      reason === "already"
+        ? "ข้อสอบนี้ถูกส่งแล้ว"
+        : "ส่งกระดาษคำตอบสำเร็จ";
+
+
+    title.className =
+      "text-2xl font-bold text-slate-800";
+  }
+
+
+  document
+    .getElementById(
+      "finalScore"
+    )
+    .innerText =
+    `${score} / ${currentQuestions.length || 20}`;
+
+
+  document
+    .getElementById(
+      "finalViolations"
+    )
+    .innerText =
+    `สถิติการสลับจอ: ${violations} ครั้ง`;
+
+
+  /*
+    ออกจาก Fullscreen หลัง isExamActive = false แล้ว
+    จึงไม่ถูกนับเป็นการละเมิด
+  */
+  if (
+    getFullscreenElement()
+  ) {
+
+    try {
+
+      if (
+        document.exitFullscreen
+      ) {
+
+        document
+          .exitFullscreen()
+          .catch(() => {});
+
+      } else if (
+        document.webkitExitFullscreen
+      ) {
+
+        document
+          .webkitExitFullscreen();
+      }
+
+    } catch (_) {}
+  }
+}
+
+
+/* =========================================================
+   17. กัน Refresh/ปิดแท็บโดยไม่ตั้งใจ
+   Browser จะแสดงข้อความมาตรฐานของตัวเอง
+   ========================================================= */
+
+window.addEventListener(
+  "beforeunload",
+  (event) => {
+
+    if (
+      isExamActive &&
+      !hasSubmitted
+    ) {
+
+      event.preventDefault();
+
+      event.returnValue =
+        "";
+    }
+  }
+);
+
+
+/* =========================================================
+   18. Helper
+   ========================================================= */
+
+function createEventId() {
+
+  if (
+    window.crypto &&
+    typeof crypto.randomUUID ===
+      "function"
+  ) {
+
+    return crypto.randomUUID();
+  }
+
+
+  return (
+    Date.now().toString(36) +
+    "_" +
+    Math.random()
+      .toString(36)
+      .slice(2)
+  );
+}
+
+
+function escapeHtml(value) {
+
+  return String(
+    value ?? ""
+  )
+    .replaceAll(
+      "&",
+      "&amp;"
+    )
+    .replaceAll(
+      "<",
+      "&lt;"
+    )
+    .replaceAll(
+      ">",
+      "&gt;"
+    )
+    .replaceAll(
+      '"',
+      "&quot;"
+    )
+    .replaceAll(
+      "'",
+      "&#039;"
+    );
+}
+
+
+/* =========================================================
+   19. Prefill ข้อมูลนักเรียนที่เคยกรอก
+   ========================================================= */
+
+(function restoreStudentInfo() {
+
+  try {
+
+    const raw =
+      localStorage.getItem(
+        "pe_exam_student"
+      );
+
+
+    if (!raw) return;
+
+
+    const saved =
+      JSON.parse(raw);
+
+
+    document
+      .getElementById(
+        "fullname"
+      )
+      .value =
+      saved.fullname || "";
+
+
+    document
+      .getElementById(
+        "room"
+      )
+      .value =
+      saved.room || "";
+
+
+    document
+      .getElementById(
+        "no"
+      )
+      .value =
+      saved.no || "";
+
+  } catch (_) {}
+})();
+</script>
+
+</body>
+</html>
