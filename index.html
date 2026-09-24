@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>แบบทดสอบวิชาพลศึกษา ม.6</title>
+  <!-- Exam System v2.2: queue-friendly edition -->
 
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
@@ -315,6 +316,12 @@ let recoveryTimer = null;
 */
 let ignoreAntiCheatUntil = 0;
 
+/*
+  v2.2: เก็บเหตุการณ์ละเมิดไว้ในเครื่องก่อน แล้วส่งแบบ batch ตอน Submit
+  เพื่อลดจำนวนคำขอไปยัง Apps Script ขณะนักเรียนหลายร้อยคนสอบพร้อมกัน
+*/
+let violationEvents = [];
+
 
 /* =========================================================
    4. JSONP API
@@ -389,12 +396,16 @@ function apiCall(action, data = {}, timeoutMs = 45000) {
 
       } else {
 
-        reject(
-          new Error(
-            response?.message ||
-            "ไม่สามารถติดต่อระบบบันทึกข้อมูลได้"
-          )
+        const err = new Error(
+          response?.message ||
+          "ไม่สามารถติดต่อระบบบันทึกข้อมูลได้"
         );
+
+        err.code = response?.code || "";
+        err.retryAfterMs = Number(response?.retryAfterMs || 0);
+        err.stage = response?.stage || action;
+
+        reject(err);
       }
     };
 
@@ -450,22 +461,62 @@ function apiCall(action, data = {}, timeoutMs = 45000) {
 
 
 /* =========================================================
-   4.1 Retry Helper
-   ลดปัญหา Apps Script cold start / ตอบกลับช้า
+   4.1 Queue / Retry Helper — v2.2
+   กระจายคำขอ (jitter) + retry แบบสุ่ม เพื่อไม่ให้ทั้งระดับยิงซ้ำพร้อมกัน
    ========================================================= */
 
 function waitMs(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+function randomMs(min, max) {
+  const lo = Math.max(0, Number(min || 0));
+  const hi = Math.max(lo, Number(max || lo));
+  return Math.floor(lo + Math.random() * (hi - lo + 1));
+}
+
 function isRetryableApiError(err) {
   const msg = String(err?.message || "");
 
   return (
+    err?.code === "BUSY" ||
     msg.includes("ตอบกลับช้ากว่าปกติ") ||
     msg.includes("เชื่อมต่อ Google Apps Script ไม่สำเร็จ") ||
-    msg.includes("หมดเวลา")
+    msg.includes("หมดเวลา") ||
+    msg.includes("คิว")
   );
+}
+
+function showQueueLoading(title, text) {
+  if (Swal.isVisible()) {
+    Swal.update({ title, text });
+    Swal.showLoading();
+    return;
+  }
+
+  Swal.fire({
+    title,
+    text,
+    allowOutsideClick: false,
+    allowEscapeKey: false,
+    showConfirmButton: false,
+    didOpen: () => Swal.showLoading()
+  });
+}
+
+async function queueJitter(minMs, maxMs, title, text) {
+  const delay = randomMs(minMs, maxMs);
+
+  if (delay > 250) {
+    showQueueLoading(
+      title || "กำลังเข้าคิว...",
+      text || "ระบบกำลังกระจายคำขอเพื่อรองรับผู้เข้าสอบจำนวนมาก กรุณารอสักครู่"
+    );
+  }
+
+  if (delay > 0) {
+    await waitMs(delay);
+  }
 }
 
 async function apiCallWithRetry(
@@ -474,8 +525,13 @@ async function apiCallWithRetry(
   options = {}
 ) {
 
-  const attempts = Number(options.attempts || 2);
-  const timeoutMs = Number(options.timeoutMs || 60000);
+  const attempts = Math.max(1, Number(options.attempts || 5));
+  const timeoutMs = Math.max(5000, Number(options.timeoutMs || 45000));
+  const jitterMinMs = Math.max(0, Number(options.jitterMinMs || 900));
+  const jitterMaxMs = Math.max(jitterMinMs, Number(options.jitterMaxMs || 4500));
+  const onRetry = typeof options.onRetry === "function"
+    ? options.onRetry
+    : null;
 
   let lastError = null;
 
@@ -491,7 +547,27 @@ async function apiCallWithRetry(
         throw err;
       }
 
-      await waitMs(1200 * i);
+      const serverDelay = Math.max(0, Number(err?.retryAfterMs || 0));
+      const exponential = Math.min(8000, 700 * Math.pow(1.55, i - 1));
+      const delay = Math.max(
+        serverDelay,
+        Math.round(exponential + randomMs(jitterMinMs, jitterMaxMs))
+      );
+
+      if (onRetry) {
+        try {
+          onRetry({
+            action,
+            attempt: i,
+            nextAttempt: i + 1,
+            maxAttempts: attempts,
+            delayMs: delay,
+            error: err
+          });
+        } catch (_) {}
+      }
+
+      await waitMs(delay);
     }
   }
 
@@ -583,9 +659,21 @@ async function lookupStudent() {
 
   try {
 
-    const res = await apiCall(
+    /* กระจาย lookup เล็กน้อยโดยไม่เปิด popup */
+    await waitMs(randomMs(0, 6000));
+
+    const res = await apiCallWithRetry(
       "lookup",
-      { studentId }
+      { studentId },
+      {
+        attempts: 5,
+        timeoutMs: 40000,
+        jitterMinMs: 800,
+        jitterMaxMs: 3500,
+        onRetry: ({ nextAttempt, maxAttempts }) => {
+          btnLookup.innerText = `คิวหนาแน่น (${nextAttempt}/${maxAttempts})`;
+        }
+      }
     );
 
     studentData = res.student || {};
@@ -695,21 +783,34 @@ async function startExam() {
     console.log("Fullscreen start:", err);
   }
 
-  Swal.fire({
-    title: "กำลังเตรียมข้อสอบ...",
-    text: "กรุณารอสักครู่",
-    allowOutsideClick: false,
-    allowEscapeKey: false,
-    didOpen: () => {
-      Swal.showLoading();
-    }
-  });
+  showQueueLoading(
+    "กำลังเข้าคิวเริ่มสอบ...",
+    "ระบบกำลังกระจายคำขอของผู้เข้าสอบ กรุณารอสักครู่และไม่ต้องกดซ้ำ"
+  );
 
   try {
 
-    const res = await apiCall(
+    /*
+      v2.2: กระจายการกดเริ่มของนักเรียนทั้งระดับออกเป็นช่วง 0–15 วินาที
+      Timer จะเริ่มเมื่อ Server สร้าง Attempt จริง จึงไม่เสียเวลาสอบ
+    */
+    await queueJitter(0, 15000);
+
+    const res = await apiCallWithRetry(
       "start",
-      { studentId: studentData.studentId }
+      { studentId: studentData.studentId },
+      {
+        attempts: 7,
+        timeoutMs: 45000,
+        jitterMinMs: 1200,
+        jitterMaxMs: 5000,
+        onRetry: ({ nextAttempt, maxAttempts, delayMs }) => {
+          showQueueLoading(
+            "ระบบกำลังรับผู้เข้าสอบจำนวนมาก",
+            `กำลังเข้าคิวใหม่ ${nextAttempt}/${maxAttempts} (รอประมาณ ${Math.ceil(delayMs / 1000)} วินาที) กรุณาอย่ากดซ้ำ`
+          );
+        }
+      }
     );
 
     Swal.close();
@@ -758,6 +859,12 @@ async function startExam() {
     violationEpisodeActive = false;
 
     startTimer();
+
+    /* ถ้า Refresh หลังครบ 3 ครั้ง แต่ก่อน Submit สำเร็จ ให้ส่งต่อทันที */
+    if (violationCount >= VIOLATION_LIMIT) {
+      setTimeout(() => submitExam("violation"), 300);
+      return;
+    }
 
     /*
       ถ้าเป็น Attempt ที่หมดเวลา/ถูกล็อกจากครั้งก่อน
@@ -904,7 +1011,9 @@ function saveDraftAnswers() {
 
   const payload = {
     savedAt: Date.now(),
-    answers: collectAnswers()
+    answers: collectAnswers(),
+    violations: violationCount,
+    violationEvents: violationEvents
   };
 
 
@@ -939,6 +1048,26 @@ function restoreDraftAnswers() {
 
     const answers =
       saved.answers || {};
+
+    const savedViolations = Math.max(
+      0,
+      Number(saved.violations || 0)
+    );
+
+    if (savedViolations > violationCount) {
+      violationCount = Math.min(savedViolations, VIOLATION_LIMIT);
+    }
+
+    if (Array.isArray(saved.violationEvents)) {
+      violationEvents = saved.violationEvents
+        .filter(item => item && item.eventId)
+        .slice(-VIOLATION_LIMIT);
+    }
+
+    const violationCounter = document.getElementById("violationCount");
+    if (violationCounter) {
+      violationCounter.innerText = violationCount;
+    }
 
 
     Object.entries(answers)
@@ -1276,133 +1405,46 @@ async function registerViolation(reason) {
     return;
   }
 
-
   /*
-    จุดสำคัญ:
     visibilitychange + blur + fullscreenchange
-    ที่เกิดจากการออกจอครั้งเดียว
-    จะเข้ามาที่นี่ได้เพียงรอบแรก
+    ที่เกิดจากการออกจอครั้งเดียว จะถูกนับเพียงครั้งเดียว
   */
-  if (
-    violationEpisodeActive
-  ) {
+  if (violationEpisodeActive) {
     return;
   }
-
 
   violationEpisodeActive = true;
+  clearTimeout(recoveryTimer);
 
-
-  clearTimeout(
-    recoveryTimer
-  );
-
-
-  /*
-    เพิ่มแบบ Optimistic ก่อน
-    เพื่อให้ UI ตอบสนองทันที
-  */
   violationCount++;
 
-
   document
-    .getElementById(
-      "violationCount"
-    )
-    .innerText =
-    violationCount;
+    .getElementById("violationCount")
+    .innerText = violationCount;
 
-
-  pendingViolationReason =
-    reason;
-
-
-  const eventId =
-    createEventId();
-
+  pendingViolationReason = reason;
 
   /*
-    บันทึก Server แยกต่างหาก
-    เพื่อให้ Refresh แล้วจำนวนครั้งไม่รีเซ็ต
+    v2.2: ไม่ยิง Server ทุกครั้งที่เกิด Violation
+    เก็บ event ไว้ในเครื่อง แล้วส่งพร้อมคำตอบแบบ Batch ตอน Submit
+    ลด Apps Script executions และ Sheet writes อย่างมากเมื่อสอบทั้งระดับ
   */
-  apiCall(
-    "violation",
-    {
-      attemptId,
-      eventId,
-      reason
-    }
-  )
-    .then((res) => {
+  violationEvents.push({
+    eventId: createEventId(),
+    timestamp: new Date().toISOString(),
+    violationNo: violationCount,
+    reason: String(reason || "ออกจากหน้าข้อสอบ")
+  });
 
-      violationCount =
-        Math.max(
-          violationCount,
-          Number(
-            res.violations || 0
-          )
-        );
+  violationEvents = violationEvents.slice(-VIOLATION_LIMIT);
+  saveDraftAnswers();
 
-
-      document
-        .getElementById(
-          "violationCount"
-        )
-        .innerText =
-        violationCount;
-
-
-      if (
-        res.terminate === true &&
-        !hasSubmitted
-      ) {
-
-        submitExam(
-          res.reason === "timeout"
-            ? "timeout"
-            : "violation"
-        );
-      }
-    })
-    .catch((err) => {
-
-      /*
-        ถ้าเน็ตหลุด:
-        ยังเก็บจำนวนใน Client ไว้
-        และตอน submit จะส่ง clientViolations ไปด้วย
-      */
-      console.log(
-        "Violation log failed:",
-        err
-      );
-    });
-
-
-  /*
-    ครบ 3 ครั้ง:
-    ส่งทันที ไม่ต้องรอ event อื่น
-  */
-  if (
-    violationCount >=
-    VIOLATION_LIMIT
-  ) {
-
+  if (violationCount >= VIOLATION_LIMIT) {
     isExamActive = false;
-
-
-    clearInterval(
-      timerInterval
-    );
-
-
-    submitExam(
-      "violation"
-    );
-
-
+    clearInterval(timerInterval);
+    submitExam("violation");
     return;
   }
-
 
   showPendingViolationWarning();
 }
@@ -1724,25 +1766,14 @@ async function submitExam(reason = "manual") {
     );
 
 
-  Swal.fire({
-    title:
-      reason === "violation"
-        ? "ระบบกำลังตัดสิทธิ์และส่งคำตอบ..."
-        : reason === "timeout"
-        ? "หมดเวลา ระบบกำลังส่งคำตอบ..."
-        : "กำลังบันทึกคะแนน...",
-    text:
-      "กรุณารอสักครู่ ห้ามปิดหน้าต่าง",
-    allowOutsideClick:
-      false,
-    allowEscapeKey:
-      false,
-    showConfirmButton:
-      false,
-    didOpen: () => {
-      Swal.showLoading();
-    }
-  });
+  showQueueLoading(
+    reason === "violation"
+      ? "กำลังตัดสิทธิ์และเข้าคิวส่งคำตอบ..."
+      : reason === "timeout"
+      ? "หมดเวลา — กำลังเข้าคิวส่งคำตอบ..."
+      : "กำลังเข้าคิวบันทึกคะแนน...",
+    "ห้ามปิดหน้านี้ ระบบจะส่งให้อัตโนมัติเมื่อถึงคิว ไม่ต้องกดซ้ำ"
+  );
 
 
   try {
@@ -1757,23 +1788,37 @@ async function submitExam(reason = "manual") {
       attemptId,
       answers,
       reason,
-      clientViolations:
-        violationCount
+      clientViolations: violationCount,
+      violationEvents: violationEvents
     };
 
     try {
 
       /*
-        Apps Script บางครั้งมี cold start หรือคิว Sheet ช้า
-        จึงรอได้นานขึ้นและ retry อัตโนมัติ 1 ครั้ง
-        ผู้เรียนไม่ต้องกดส่งซ้ำเอง
+        v2.2: กระจายเวลาส่ง 0–12 วินาที เพื่อลดการชนกันตอนทั้งระดับกดส่ง
+        จากนั้น retry แบบ jitter โดยอัตโนมัติ นักเรียนไม่ต้องกดซ้ำ
       */
+      await queueJitter(
+        0,
+        reason === "manual" ? 15000 : 20000,
+        "กำลังเข้าคิวบันทึกคะแนน...",
+        "ระบบกำลังกระจายคำขอของผู้เข้าสอบทั้งระดับ กรุณาอย่าปิดหน้านี้"
+      );
+
       res = await apiCallWithRetry(
         "submit",
         submitPayload,
         {
-          attempts: 2,
-          timeoutMs: 60000
+          attempts: 8,
+          timeoutMs: 45000,
+          jitterMinMs: 1400,
+          jitterMaxMs: 6000,
+          onRetry: ({ nextAttempt, maxAttempts, delayMs }) => {
+            showQueueLoading(
+              "คิวบันทึกคะแนนหนาแน่น",
+              `ระบบจะลองให้อัตโนมัติ ${nextAttempt}/${maxAttempts} (รอประมาณ ${Math.ceil(delayMs / 1000)} วินาที) ห้ามกดซ้ำ`
+            );
+          }
         }
       );
 
@@ -1785,12 +1830,19 @@ async function submitExam(reason = "manual") {
       */
       try {
 
+        showQueueLoading(
+          "กำลังตรวจสอบผลการบันทึก...",
+          "ระบบกำลังตรวจว่าคำตอบถูกบันทึกแล้วหรือยัง กรุณาอย่าปิดหน้านี้"
+        );
+
         const check = await apiCallWithRetry(
           "status",
           { attemptId },
           {
-            attempts: 2,
-            timeoutMs: 30000
+            attempts: 5,
+            timeoutMs: 30000,
+            jitterMinMs: 1000,
+            jitterMaxMs: 4500
           }
         );
 
@@ -1859,7 +1911,7 @@ async function submitExam(reason = "manual") {
       title:
         "ระบบยังไม่ได้รับการยืนยัน",
       text:
-        err.message + " คำตอบของคุณยังถูกเก็บไว้ในเครื่อง กรุณากดส่งอีกครั้งเพียงครั้งเดียว",
+        err.message + " คำตอบของคุณยังถูกเก็บไว้ในเครื่อง กรุณารอสักครู่แล้วกด 'ลองส่งอีกครั้ง' เพียงครั้งเดียว",
       confirmButtonText:
         "ลองส่งอีกครั้ง",
       allowOutsideClick:
