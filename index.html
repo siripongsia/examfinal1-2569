@@ -330,133 +330,546 @@ let violationEvents = [];
    และไม่ติดปัญหา CORS แบบ fetch ปกติ
    ========================================================= */
 
-function apiCall(action, data = {}, timeoutMs = 45000) {
+/*
+  v2.2.1:
+  ปกติใช้ JSONP ตามเดิม
+  ถ้า Browser มือถือบล็อก/โหลด script.googleusercontent.com ไม่สำเร็จ
+  ระบบจะ fallback ไปใช้ hidden iframe + postMessage อัตโนมัติ
+*/
 
-  return new Promise((resolve, reject) => {
+async function apiCall(action, data = {}, timeoutMs = 45000) {
 
-    if (
-      !API_URL ||
-      API_URL.includes("PASTE_YOUR")
-    ) {
-      reject(
-        new Error(
-          "ยังไม่ได้ตั้งค่า API_URL ในไฟล์ index.html"
-        )
+  try {
+
+    return await apiCallJsonp(
+      action,
+      data,
+      timeoutMs
+    );
+
+  } catch (err) {
+
+    const message =
+      String(
+        err?.message || ""
       );
-      return;
+
+    const transportError =
+      message.includes(
+        "เชื่อมต่อ Google Apps Script ไม่สำเร็จ"
+      ) ||
+      message.includes(
+        "ตอบกลับช้ากว่าปกติ"
+      ) ||
+      err?.code ===
+        "JSONP_LOAD_FAILED" ||
+      err?.code ===
+        "JSONP_TIMEOUT";
+
+
+    /*
+      Error ที่ Server ตอบกลับมาจริง เช่น BUSY / รหัสไม่พบ
+      ไม่ต้องเปลี่ยน transport
+    */
+    if (!transportError) {
+      throw err;
     }
 
 
-    const callbackName =
-      "__examApi_" +
-      Date.now() +
-      "_" +
-      Math.random()
-        .toString(36)
-        .slice(2);
+    console.warn(
+      "JSONP transport failed. Fallback to iframe transport.",
+      err
+    );
 
 
-    const script =
-      document.createElement("script");
+    return await apiCallIframe(
+      action,
+      data,
+      Math.max(
+        15000,
+        timeoutMs
+      )
+    );
+  }
+}
 
 
-    let finished = false;
+function apiCallJsonp(
+  action,
+  data = {},
+  timeoutMs = 45000
+) {
 
-
-    const cleanup = () => {
-
-      if (finished) return;
-
-      finished = true;
-
-      clearTimeout(timeout);
-
-      try {
-        delete window[callbackName];
-      } catch (_) {
-        window[callbackName] = undefined;
-      }
-
-      if (script.parentNode) {
-        script.parentNode.removeChild(script);
-      }
-    };
-
-
-    window[callbackName] = (response) => {
-
-      cleanup();
+  return new Promise(
+    (resolve, reject) => {
 
       if (
-        response &&
-        response.ok
-      ) {
-
-        resolve(response);
-
-      } else {
-
-        const err = new Error(
-          response?.message ||
-          "ไม่สามารถติดต่อระบบบันทึกข้อมูลได้"
-        );
-
-        err.code = response?.code || "";
-        err.retryAfterMs = Number(response?.retryAfterMs || 0);
-        err.stage = response?.stage || action;
-
-        reject(err);
-      }
-    };
-
-
-    const params =
-      new URLSearchParams({
-        action: action,
-        callback: callbackName,
-        data: JSON.stringify(data),
-        _: String(Date.now())
-      });
-
-
-    script.src =
-      API_URL +
-      "?" +
-      params.toString();
-
-
-    script.async = true;
-
-
-    script.onerror = () => {
-
-      cleanup();
-
-      reject(
-        new Error(
-          "เชื่อมต่อ Google Apps Script ไม่สำเร็จ"
+        !API_URL ||
+        API_URL.includes(
+          "PASTE_YOUR"
         )
-      );
-    };
-
-
-    const timeout =
-      setTimeout(() => {
-
-        cleanup();
+      ) {
 
         reject(
           new Error(
-            "ระบบตอบกลับช้ากว่าปกติ ระบบจะลองตรวจสอบการบันทึกให้อีกครั้ง"
+            "ยังไม่ได้ตั้งค่า API_URL ในไฟล์ index.html"
           )
         );
 
-      }, timeoutMs);
+        return;
+      }
 
 
-    document.body.appendChild(script);
+      const callbackName =
+        "__examApi_" +
+        Date.now() +
+        "_" +
+        Math.random()
+          .toString(36)
+          .slice(2);
 
-  });
+
+      const script =
+        document.createElement(
+          "script"
+        );
+
+
+      let finished =
+        false;
+
+
+      let timeout;
+
+
+      const cleanup = () => {
+
+        if (finished) {
+          return;
+        }
+
+
+        finished =
+          true;
+
+
+        clearTimeout(
+          timeout
+        );
+
+
+        /*
+          หน่วงการลบ callback/script 1 tick
+          เพื่อความเข้ากันได้กับ Browser มือถือบางรุ่น
+        */
+        setTimeout(
+          () => {
+
+            try {
+
+              delete window[
+                callbackName
+              ];
+
+            } catch (_) {
+
+              window[
+                callbackName
+              ] =
+                undefined;
+            }
+
+
+            if (
+              script.parentNode
+            ) {
+
+              script.parentNode
+                .removeChild(
+                  script
+                );
+            }
+
+          },
+          0
+        );
+      };
+
+
+      window[
+        callbackName
+      ] =
+        (response) => {
+
+          cleanup();
+
+
+          if (
+            response &&
+            response.ok
+          ) {
+
+            resolve(
+              response
+            );
+
+          } else {
+
+            const err =
+              new Error(
+                response?.message ||
+                "ไม่สามารถติดต่อระบบบันทึกข้อมูลได้"
+              );
+
+
+            err.code =
+              response?.code ||
+              "";
+
+
+            err.retryAfterMs =
+              Number(
+                response
+                  ?.retryAfterMs ||
+                0
+              );
+
+
+            err.stage =
+              response?.stage ||
+              action;
+
+
+            reject(
+              err
+            );
+          }
+        };
+
+
+      const params =
+        new URLSearchParams({
+          action:
+            action,
+          callback:
+            callbackName,
+          data:
+            JSON.stringify(
+              data
+            ),
+          _:
+            String(
+              Date.now()
+            )
+        });
+
+
+      script.src =
+        API_URL +
+        "?" +
+        params.toString();
+
+
+      script.async =
+        true;
+
+
+      script.crossOrigin =
+        "anonymous";
+
+
+      script.onerror =
+        () => {
+
+          cleanup();
+
+
+          const err =
+            new Error(
+              "เชื่อมต่อ Google Apps Script ไม่สำเร็จ"
+            );
+
+
+          err.code =
+            "JSONP_LOAD_FAILED";
+
+
+          reject(
+            err
+          );
+        };
+
+
+      timeout =
+        setTimeout(
+          () => {
+
+            cleanup();
+
+
+            const err =
+              new Error(
+                "ระบบตอบกลับช้ากว่าปกติ ระบบจะลองตรวจสอบการบันทึกให้อีกครั้ง"
+              );
+
+
+            err.code =
+              "JSONP_TIMEOUT";
+
+
+            reject(
+              err
+            );
+
+          },
+          timeoutMs
+        );
+
+
+      document.head
+        .appendChild(
+          script
+        );
+    }
+  );
+}
+
+
+/*
+  Fallback สำหรับ Browser มือถือที่โหลด JSONP ข้ามโดเมนไม่เสถียร
+
+  Apps Script จะส่ง HTML ขนาดเล็กกลับมาใน iframe
+  แล้วใช้ window.parent.postMessage() ส่งข้อมูลกลับ GitHub Pages
+*/
+function apiCallIframe(
+  action,
+  data = {},
+  timeoutMs = 45000
+) {
+
+  return new Promise(
+    (resolve, reject) => {
+
+      const requestId =
+        "iframe_" +
+        Date.now() +
+        "_" +
+        Math.random()
+          .toString(36)
+          .slice(2);
+
+
+      const iframe =
+        document.createElement(
+          "iframe"
+        );
+
+
+      iframe.style.display =
+        "none";
+
+
+      iframe.setAttribute(
+        "aria-hidden",
+        "true"
+      );
+
+
+      let finished =
+        false;
+
+
+      let timeout;
+
+
+      const cleanup = () => {
+
+        if (finished) {
+          return;
+        }
+
+
+        finished =
+          true;
+
+
+        clearTimeout(
+          timeout
+        );
+
+
+        window.removeEventListener(
+          "message",
+          onMessage
+        );
+
+
+        if (
+          iframe.parentNode
+        ) {
+
+          iframe.parentNode
+            .removeChild(
+              iframe
+            );
+        }
+      };
+
+
+      const onMessage =
+        (event) => {
+
+          const origin =
+            String(
+              event.origin ||
+              ""
+            );
+
+
+          const allowedOrigin =
+            origin ===
+              "https://script.google.com" ||
+            origin ===
+              "https://script.googleusercontent.com" ||
+            origin.endsWith(
+              ".googleusercontent.com"
+            );
+
+
+          if (!allowedOrigin) {
+            return;
+          }
+
+
+          const message =
+            event.data;
+
+
+          if (
+            !message ||
+            message.type !==
+              "PE_EXAM_API_RESPONSE" ||
+            message.requestId !==
+              requestId
+          ) {
+
+            return;
+          }
+
+
+          cleanup();
+
+
+          const response =
+            message.response;
+
+
+          if (
+            response &&
+            response.ok
+          ) {
+
+            resolve(
+              response
+            );
+
+          } else {
+
+            const err =
+              new Error(
+                response?.message ||
+                "ไม่สามารถติดต่อระบบบันทึกข้อมูลได้"
+              );
+
+
+            err.code =
+              response?.code ||
+              "";
+
+
+            err.retryAfterMs =
+              Number(
+                response
+                  ?.retryAfterMs ||
+                0
+              );
+
+
+            err.stage =
+              response?.stage ||
+              action;
+
+
+            reject(
+              err
+            );
+          }
+        };
+
+
+      window.addEventListener(
+        "message",
+        onMessage
+      );
+
+
+      const params =
+        new URLSearchParams({
+          action:
+            action,
+          transport:
+            "iframe",
+          requestId:
+            requestId,
+          data:
+            JSON.stringify(
+              data
+            ),
+          _:
+            String(
+              Date.now()
+            )
+        });
+
+
+      iframe.src =
+        API_URL +
+        "?" +
+        params.toString();
+
+
+      timeout =
+        setTimeout(
+          () => {
+
+            cleanup();
+
+
+            const err =
+              new Error(
+                "ไม่สามารถเชื่อมต่อระบบตรวจสอบได้ กรุณาเปิดข้อสอบด้วย Google Chrome แล้วลองอีกครั้ง"
+              );
+
+
+            err.code =
+              "IFRAME_TIMEOUT";
+
+
+            reject(
+              err
+            );
+
+          },
+          timeoutMs
+        );
+
+
+      document.body
+        .appendChild(
+          iframe
+        );
+    }
+  );
 }
 
 
