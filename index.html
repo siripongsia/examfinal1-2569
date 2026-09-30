@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>แบบทดสอบวิชาพลศึกษา ม.6</title>
-  <!-- Exam System v2.2: queue-friendly edition -->
+  <!-- Exam System v2.4: queue-friendly edition -->
 
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
@@ -60,7 +60,7 @@
         <li><strong>เวลาในการทำข้อสอบ:</strong> 45 นาที</li>
         <li>ข้อสอบจะถูกสุ่มลำดับข้อสำหรับแต่ละการสอบ</li>
         <li><strong>ใช้เลขประจำตัวนักเรียนของตนเองเท่านั้น</strong> และหนึ่งรหัสสอบได้หนึ่งรอบ</li>
-        <li>เมื่อเริ่มสอบ ระบบจะพยายามเข้าสู่โหมดเต็มจอ (Fullscreen)</li>
+        <li>บนคอมพิวเตอร์ระบบอาจเข้าสู่โหมดเต็มจอ ส่วนมือถือไม่บังคับเต็มจอ</li>
         <li><strong>ห้ามสลับแท็บ ย่อหน้าต่าง หรือปัดไปหน้าจออื่น</strong></li>
         <li>
           ระบบจะนับการออกจากหน้าข้อสอบเป็น “รอบ”
@@ -187,20 +187,56 @@
 
     <form id="quizForm"
           onsubmit="confirmManualSubmit(event)"
-          class="space-y-6">
+          class="space-y-4">
 
-      <div id="questionsContainer"
-           class="space-y-6">
+      <!-- ความคืบหน้า -->
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-3">
+        <div class="flex items-center justify-between gap-3 text-sm">
+          <span id="questionProgress"
+                class="font-semibold text-blue-700">
+            ข้อ 1 / 20
+          </span>
+          <span id="answeredProgress"
+                class="text-slate-500">
+            ตอบแล้ว 0 / 20
+          </span>
+        </div>
+
+        <div class="mt-2 h-2 bg-slate-100 rounded-full overflow-hidden">
+          <div id="questionProgressBar"
+               class="h-full bg-blue-600 transition-all duration-200"
+               style="width:5%">
+          </div>
+        </div>
       </div>
 
-      <div class="pt-4 pb-12">
+      <!-- แสดงครั้งละ 1 ข้อ -->
+      <div id="questionsContainer"></div>
 
+      <!-- ปุ่มเปลี่ยนข้อ -->
+      <div class="grid grid-cols-2 gap-3 pt-2">
+        <button type="button"
+                id="btnPrev"
+                onclick="goPreviousQuestion()"
+                class="bg-slate-200 hover:bg-slate-300 disabled:opacity-40 disabled:cursor-not-allowed text-slate-700 font-semibold py-3 rounded-xl transition">
+          ← ข้อก่อนหน้า
+        </button>
+
+        <button type="button"
+                id="btnNext"
+                onclick="goNextQuestion()"
+                class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-xl shadow-sm transition">
+          ข้อถัดไป →
+        </button>
+      </div>
+
+      <div id="submitWrap"
+           class="hidden pt-2 pb-10">
         <button type="submit"
                 id="btnSubmit"
                 class="w-full bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-400 text-white font-semibold py-3.5 rounded-xl shadow-md transition duration-150 text-lg">
           ส่งกระดาษคำตอบ
         </button>
-
       </div>
 
     </form>
@@ -273,6 +309,17 @@ const VIOLATION_LIMIT = 3;
    ========================================================= */
 
 let currentQuestions = [];
+let currentQuestionIndex = 0;
+let answerState = {};
+
+/*
+  v2.4:
+  มือถือ/แท็บเล็ตไม่ใช้ blur หรือ fullscreenchange เป็นตัวตัดสินการละเมิด
+  เพราะการเลื่อนหน้า/ซ่อนแถบ Browser บางรุ่นทำให้เกิด false positive ได้
+*/
+const IS_TOUCH_DEVICE =
+  (window.matchMedia && window.matchMedia("(pointer: coarse)").matches) ||
+  Number(navigator.maxTouchPoints || 0) > 0;
 
 let studentData = {};
 
@@ -311,13 +358,22 @@ let blurTimer = null;
 let recoveryTimer = null;
 
 /*
+  v2.4: ตัวช่วยตรวจจับบนมือถือ
+  บาง Browser จะหยุด setTimeout ทันทีเมื่อแอปถูกส่งไปพื้นหลัง
+  จึงเก็บเวลาที่ blur/hidden ไว้ และตรวจซ้ำตอนกลับมา focus/pageshow
+*/
+let blurStartedAt = 0;
+let backgroundStartedAt = 0;
+const MIN_LEAVE_MS = 500;
+
+/*
   ใช้ตอนระบบกำลังสั่งเข้า Fullscreen เอง
   เพื่อป้องกันการนับ event ของระบบเป็นการโกง
 */
 let ignoreAntiCheatUntil = 0;
 
 /*
-  v2.2: เก็บเหตุการณ์ละเมิดไว้ในเครื่องก่อน แล้วส่งแบบ batch ตอน Submit
+  v2.4: เก็บเหตุการณ์ละเมิดไว้ในเครื่องก่อน แล้วส่งแบบ batch ตอน Submit
   เพื่อลดจำนวนคำขอไปยัง Apps Script ขณะนักเรียนหลายร้อยคนสอบพร้อมกัน
 */
 let violationEvents = [];
@@ -330,551 +386,138 @@ let violationEvents = [];
    และไม่ติดปัญหา CORS แบบ fetch ปกติ
    ========================================================= */
 
-/*
-  v2.2.1:
-  ปกติใช้ JSONP ตามเดิม
-  ถ้า Browser มือถือบล็อก/โหลด script.googleusercontent.com ไม่สำเร็จ
-  ระบบจะ fallback ไปใช้ hidden iframe + postMessage อัตโนมัติ
-*/
+function apiCall(action, data = {}, timeoutMs = 45000) {
 
-async function apiCall(action, data = {}, timeoutMs = 45000) {
+  return new Promise((resolve, reject) => {
 
-  try {
-
-    return await apiCallJsonp(
-      action,
-      data,
-      timeoutMs
-    );
-
-  } catch (err) {
-
-    const message =
-      String(
-        err?.message || ""
+    if (
+      !API_URL ||
+      API_URL.includes("PASTE_YOUR")
+    ) {
+      reject(
+        new Error(
+          "ยังไม่ได้ตั้งค่า API_URL ในไฟล์ index.html"
+        )
       );
-
-    const transportError =
-      message.includes(
-        "เชื่อมต่อ Google Apps Script ไม่สำเร็จ"
-      ) ||
-      message.includes(
-        "ตอบกลับช้ากว่าปกติ"
-      ) ||
-      err?.code ===
-        "JSONP_LOAD_FAILED" ||
-      err?.code ===
-        "JSONP_TIMEOUT";
-
-
-    /*
-      Error ที่ Server ตอบกลับมาจริง เช่น BUSY / รหัสไม่พบ
-      ไม่ต้องเปลี่ยน transport
-    */
-    if (!transportError) {
-      throw err;
+      return;
     }
 
 
-    console.warn(
-      "JSONP transport failed. Fallback to iframe transport.",
-      err
-    );
+    const callbackName =
+      "__examApi_" +
+      Date.now() +
+      "_" +
+      Math.random()
+        .toString(36)
+        .slice(2);
 
 
-    return await apiCallIframe(
-      action,
-      data,
-      Math.max(
-        15000,
-        timeoutMs
-      )
-    );
-  }
-}
+    const script =
+      document.createElement("script");
 
 
-function apiCallJsonp(
-  action,
-  data = {},
-  timeoutMs = 45000
-) {
+    let finished = false;
 
-  return new Promise(
-    (resolve, reject) => {
+
+    const cleanup = () => {
+
+      if (finished) return;
+
+      finished = true;
+
+      clearTimeout(timeout);
+
+      try {
+        delete window[callbackName];
+      } catch (_) {
+        window[callbackName] = undefined;
+      }
+
+      if (script.parentNode) {
+        script.parentNode.removeChild(script);
+      }
+    };
+
+
+    window[callbackName] = (response) => {
+
+      cleanup();
 
       if (
-        !API_URL ||
-        API_URL.includes(
-          "PASTE_YOUR"
-        )
+        response &&
+        response.ok
       ) {
+
+        resolve(response);
+
+      } else {
+
+        const err = new Error(
+          response?.message ||
+          "ไม่สามารถติดต่อระบบบันทึกข้อมูลได้"
+        );
+
+        err.code = response?.code || "";
+        err.retryAfterMs = Number(response?.retryAfterMs || 0);
+        err.stage = response?.stage || action;
+
+        reject(err);
+      }
+    };
+
+
+    const params =
+      new URLSearchParams({
+        action: action,
+        callback: callbackName,
+        data: JSON.stringify(data),
+        _: String(Date.now())
+      });
+
+
+    script.src =
+      API_URL +
+      "?" +
+      params.toString();
+
+
+    script.async = true;
+
+
+    script.onerror = () => {
+
+      cleanup();
+
+      reject(
+        new Error(
+          "เชื่อมต่อ Google Apps Script ไม่สำเร็จ"
+        )
+      );
+    };
+
+
+    const timeout =
+      setTimeout(() => {
+
+        cleanup();
 
         reject(
           new Error(
-            "ยังไม่ได้ตั้งค่า API_URL ในไฟล์ index.html"
+            "ระบบตอบกลับช้ากว่าปกติ ระบบจะลองตรวจสอบการบันทึกให้อีกครั้ง"
           )
         );
 
-        return;
-      }
+      }, timeoutMs);
 
 
-      const callbackName =
-        "__examApi_" +
-        Date.now() +
-        "_" +
-        Math.random()
-          .toString(36)
-          .slice(2);
+    document.body.appendChild(script);
 
-
-      const script =
-        document.createElement(
-          "script"
-        );
-
-
-      let finished =
-        false;
-
-
-      let timeout;
-
-
-      const cleanup = () => {
-
-        if (finished) {
-          return;
-        }
-
-
-        finished =
-          true;
-
-
-        clearTimeout(
-          timeout
-        );
-
-
-        /*
-          หน่วงการลบ callback/script 1 tick
-          เพื่อความเข้ากันได้กับ Browser มือถือบางรุ่น
-        */
-        setTimeout(
-          () => {
-
-            try {
-
-              delete window[
-                callbackName
-              ];
-
-            } catch (_) {
-
-              window[
-                callbackName
-              ] =
-                undefined;
-            }
-
-
-            if (
-              script.parentNode
-            ) {
-
-              script.parentNode
-                .removeChild(
-                  script
-                );
-            }
-
-          },
-          0
-        );
-      };
-
-
-      window[
-        callbackName
-      ] =
-        (response) => {
-
-          cleanup();
-
-
-          if (
-            response &&
-            response.ok
-          ) {
-
-            resolve(
-              response
-            );
-
-          } else {
-
-            const err =
-              new Error(
-                response?.message ||
-                "ไม่สามารถติดต่อระบบบันทึกข้อมูลได้"
-              );
-
-
-            err.code =
-              response?.code ||
-              "";
-
-
-            err.retryAfterMs =
-              Number(
-                response
-                  ?.retryAfterMs ||
-                0
-              );
-
-
-            err.stage =
-              response?.stage ||
-              action;
-
-
-            reject(
-              err
-            );
-          }
-        };
-
-
-      const params =
-        new URLSearchParams({
-          action:
-            action,
-          callback:
-            callbackName,
-          data:
-            JSON.stringify(
-              data
-            ),
-          _:
-            String(
-              Date.now()
-            )
-        });
-
-
-      script.src =
-        API_URL +
-        "?" +
-        params.toString();
-
-
-      script.async =
-        true;
-
-
-      script.crossOrigin =
-        "anonymous";
-
-
-      script.onerror =
-        () => {
-
-          cleanup();
-
-
-          const err =
-            new Error(
-              "เชื่อมต่อ Google Apps Script ไม่สำเร็จ"
-            );
-
-
-          err.code =
-            "JSONP_LOAD_FAILED";
-
-
-          reject(
-            err
-          );
-        };
-
-
-      timeout =
-        setTimeout(
-          () => {
-
-            cleanup();
-
-
-            const err =
-              new Error(
-                "ระบบตอบกลับช้ากว่าปกติ ระบบจะลองตรวจสอบการบันทึกให้อีกครั้ง"
-              );
-
-
-            err.code =
-              "JSONP_TIMEOUT";
-
-
-            reject(
-              err
-            );
-
-          },
-          timeoutMs
-        );
-
-
-      document.head
-        .appendChild(
-          script
-        );
-    }
-  );
-}
-
-
-/*
-  Fallback สำหรับ Browser มือถือที่โหลด JSONP ข้ามโดเมนไม่เสถียร
-
-  Apps Script จะส่ง HTML ขนาดเล็กกลับมาใน iframe
-  แล้วใช้ window.parent.postMessage() ส่งข้อมูลกลับ GitHub Pages
-*/
-function apiCallIframe(
-  action,
-  data = {},
-  timeoutMs = 45000
-) {
-
-  return new Promise(
-    (resolve, reject) => {
-
-      const requestId =
-        "iframe_" +
-        Date.now() +
-        "_" +
-        Math.random()
-          .toString(36)
-          .slice(2);
-
-
-      const iframe =
-        document.createElement(
-          "iframe"
-        );
-
-
-      iframe.style.display =
-        "none";
-
-
-      iframe.setAttribute(
-        "aria-hidden",
-        "true"
-      );
-
-
-      let finished =
-        false;
-
-
-      let timeout;
-
-
-      const cleanup = () => {
-
-        if (finished) {
-          return;
-        }
-
-
-        finished =
-          true;
-
-
-        clearTimeout(
-          timeout
-        );
-
-
-        window.removeEventListener(
-          "message",
-          onMessage
-        );
-
-
-        if (
-          iframe.parentNode
-        ) {
-
-          iframe.parentNode
-            .removeChild(
-              iframe
-            );
-        }
-      };
-
-
-      const onMessage =
-        (event) => {
-
-          const origin =
-            String(
-              event.origin ||
-              ""
-            );
-
-
-          const allowedOrigin =
-            origin ===
-              "https://script.google.com" ||
-            origin ===
-              "https://script.googleusercontent.com" ||
-            origin.endsWith(
-              ".googleusercontent.com"
-            );
-
-
-          if (!allowedOrigin) {
-            return;
-          }
-
-
-          const message =
-            event.data;
-
-
-          if (
-            !message ||
-            message.type !==
-              "PE_EXAM_API_RESPONSE" ||
-            message.requestId !==
-              requestId
-          ) {
-
-            return;
-          }
-
-
-          cleanup();
-
-
-          const response =
-            message.response;
-
-
-          if (
-            response &&
-            response.ok
-          ) {
-
-            resolve(
-              response
-            );
-
-          } else {
-
-            const err =
-              new Error(
-                response?.message ||
-                "ไม่สามารถติดต่อระบบบันทึกข้อมูลได้"
-              );
-
-
-            err.code =
-              response?.code ||
-              "";
-
-
-            err.retryAfterMs =
-              Number(
-                response
-                  ?.retryAfterMs ||
-                0
-              );
-
-
-            err.stage =
-              response?.stage ||
-              action;
-
-
-            reject(
-              err
-            );
-          }
-        };
-
-
-      window.addEventListener(
-        "message",
-        onMessage
-      );
-
-
-      const params =
-        new URLSearchParams({
-          action:
-            action,
-          transport:
-            "iframe",
-          requestId:
-            requestId,
-          data:
-            JSON.stringify(
-              data
-            ),
-          _:
-            String(
-              Date.now()
-            )
-        });
-
-
-      iframe.src =
-        API_URL +
-        "?" +
-        params.toString();
-
-
-      timeout =
-        setTimeout(
-          () => {
-
-            cleanup();
-
-
-            const err =
-              new Error(
-                "ไม่สามารถเชื่อมต่อระบบตรวจสอบได้ กรุณาเปิดข้อสอบด้วย Google Chrome แล้วลองอีกครั้ง"
-              );
-
-
-            err.code =
-              "IFRAME_TIMEOUT";
-
-
-            reject(
-              err
-            );
-
-          },
-          timeoutMs
-        );
-
-
-      document.body
-        .appendChild(
-          iframe
-        );
-    }
-  );
+  });
 }
 
 
 /* =========================================================
-   4.1 Queue / Retry Helper — v2.2
+   4.1 Queue / Retry Helper — v2.4
    กระจายคำขอ (jitter) + retry แบบสุ่ม เพื่อไม่ให้ทั้งระดับยิงซ้ำพร้อมกัน
    ========================================================= */
 
@@ -1079,12 +722,12 @@ async function lookupStudent() {
       "lookup",
       { studentId },
       {
-        attempts: 5,
-        timeoutMs: 40000,
-        jitterMinMs: 800,
-        jitterMaxMs: 3500,
+        attempts: 7,
+        timeoutMs: 60000,
+        jitterMinMs: 900,
+        jitterMaxMs: 5000,
         onRetry: ({ nextAttempt, maxAttempts }) => {
-          btnLookup.innerText = `คิวหนาแน่น (${nextAttempt}/${maxAttempts})`;
+          btnLookup.innerText = `กำลังเชื่อมต่อใหม่ (${nextAttempt}/${maxAttempts})`;
         }
       }
     );
@@ -1190,10 +833,12 @@ async function startExam() {
   */
   ignoreAntiCheatUntil = Date.now() + 3000;
 
-  try {
-    await requestExamFullscreen();
-  } catch (err) {
-    console.log("Fullscreen start:", err);
+  if (!IS_TOUCH_DEVICE) {
+    try {
+      await requestExamFullscreen();
+    } catch (err) {
+      console.log("Fullscreen start:", err);
+    }
   }
 
   showQueueLoading(
@@ -1204,7 +849,7 @@ async function startExam() {
   try {
 
     /*
-      v2.2: กระจายการกดเริ่มของนักเรียนทั้งระดับออกเป็นช่วง 0–15 วินาที
+      v2.4: กระจายการกดเริ่มของนักเรียนทั้งระดับออกเป็นช่วง 0–15 วินาที
       Timer จะเริ่มเมื่อ Server สร้าง Attempt จริง จึงไม่เสียเวลาสอบ
     */
     await queueJitter(0, 15000);
@@ -1261,8 +906,8 @@ async function startExam() {
     document.getElementById("displayStudent").innerText =
       `${studentData.fullname} (ม.${studentData.room} เลขที่ ${studentData.no} | ${studentData.studentId})`;
 
-    renderQuestions();
     restoreDraftAnswers();
+    renderQuestions();
 
     document.getElementById("startScreen").classList.add("hidden");
     document.getElementById("examScreen").classList.remove("hidden");
@@ -1310,71 +955,176 @@ async function startExam() {
 function renderQuestions() {
 
   const container =
-    document.getElementById(
-      "questionsContainer"
-    );
+    document.getElementById("questionsContainer");
 
+  if (!currentQuestions.length) {
+    container.innerHTML = `
+      <div class="bg-white p-6 rounded-xl border border-slate-200 text-center text-slate-500">
+        ไม่พบข้อสอบ
+      </div>
+    `;
+    return;
+  }
 
-  container.innerHTML =
-    currentQuestions
-      .map(
-        (item, idx) => `
+  currentQuestionIndex = Math.max(
+    0,
+    Math.min(currentQuestionIndex, currentQuestions.length - 1)
+  );
 
-        <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+  const item = currentQuestions[currentQuestionIndex];
 
-          <div class="flex items-start gap-3 mb-4">
+  container.innerHTML = `
+    <div class="bg-white p-4 md:p-6 rounded-xl border border-slate-200 shadow-sm">
 
-            <span class="inline-flex items-center justify-center bg-blue-100 text-blue-800 text-xs font-bold px-2.5 py-1 rounded-md mt-0.5 whitespace-nowrap">
-              ข้อที่ ${idx + 1}
-            </span>
+      <div class="flex items-start gap-3 mb-4">
 
-            <p class="font-medium text-slate-900 leading-relaxed text-base">
-              ${escapeHtml(item.q)}
-            </p>
+        <span class="inline-flex items-center justify-center bg-blue-100 text-blue-800 text-xs font-bold px-2.5 py-1 rounded-md mt-0.5 whitespace-nowrap">
+          ข้อที่ ${currentQuestionIndex + 1}
+        </span>
 
-          </div>
+        <p class="font-medium text-slate-900 leading-relaxed text-base md:text-lg">
+          ${escapeHtml(item.q)}
+        </p>
 
+      </div>
 
-          <div class="space-y-2.5 pl-0 md:pl-2">
+      <div class="space-y-2.5">
 
-            ${item.choices
-              .map((choice) => {
+        ${item.choices.map((choice) => {
 
-                const choiceLetter =
-                  choice.substring(0, 1);
+          const choiceLetter = choice.substring(0, 1);
+          const radioId = `${item.id}_${choiceLetter}`;
+          const checked =
+            answerState[item.id] === choiceLetter
+              ? "checked"
+              : "";
 
-                const radioId =
-                  `${item.id}_${choiceLetter}`;
+          return `
+            <label for="${radioId}"
+                   class="flex items-start gap-3 p-3 rounded-lg border border-slate-200 hover:bg-blue-50/60 active:bg-blue-50 cursor-pointer transition">
 
-                return `
+              <input type="radio"
+                     id="${radioId}"
+                     name="q_${item.id}"
+                     value="${choiceLetter}"
+                     ${checked}
+                     class="mt-1 w-4 h-4 text-blue-600 focus:ring-blue-500">
 
-                <label for="${radioId}"
-                       class="flex items-center space-x-3 p-3 rounded-lg border border-slate-100 hover:bg-blue-50/50 cursor-pointer transition">
+              <span class="text-sm md:text-base text-slate-700 leading-relaxed">
+                ${escapeHtml(choice)}
+              </span>
 
-                  <input type="radio"
-                         id="${radioId}"
-                         name="q_${item.id}"
-                         value="${choiceLetter}"
-                         class="w-4 h-4 text-blue-600 focus:ring-blue-500">
+            </label>
+          `;
 
-                  <span class="text-sm text-slate-700 leading-relaxed">
-                    ${escapeHtml(choice)}
-                  </span>
+        }).join("")}
 
-                </label>
-                `;
+      </div>
 
-              })
-              .join("")}
+    </div>
+  `;
 
-          </div>
+  updateQuestionNavigation();
 
-        </div>
-      `
-      )
-      .join("");
+  /*
+    เปลี่ยนข้อแล้วให้อยู่ด้านบนของการ์ดเสมอ
+    ลดความจำเป็นในการเลื่อนหน้าจอ
+  */
+  requestAnimationFrame(() => {
+    const examScreen = document.getElementById("examScreen");
+    if (examScreen) {
+      examScreen.scrollIntoView({ block: "start", behavior: "auto" });
+    }
+  });
 }
 
+
+function syncCurrentAnswerFromDom() {
+
+  const item = currentQuestions[currentQuestionIndex];
+  if (!item) return;
+
+  const selected =
+    document.querySelector(
+      `input[name="q_${item.id}"]:checked`
+    );
+
+  if (selected) {
+    answerState[item.id] = selected.value;
+  }
+}
+
+
+function updateQuestionNavigation() {
+
+  const total = currentQuestions.length;
+  const current = currentQuestionIndex + 1;
+  const answered = Object.keys(answerState)
+    .filter(id => answerState[id])
+    .length;
+
+  const progress = document.getElementById("questionProgress");
+  const answeredProgress = document.getElementById("answeredProgress");
+  const progressBar = document.getElementById("questionProgressBar");
+  const btnPrev = document.getElementById("btnPrev");
+  const btnNext = document.getElementById("btnNext");
+  const submitWrap = document.getElementById("submitWrap");
+
+  if (progress) {
+    progress.innerText = `ข้อ ${current} / ${total}`;
+  }
+
+  if (answeredProgress) {
+    answeredProgress.innerText = `ตอบแล้ว ${answered} / ${total}`;
+  }
+
+  if (progressBar) {
+    progressBar.style.width =
+      `${Math.max(5, Math.round((current / total) * 100))}%`;
+  }
+
+  if (btnPrev) {
+    btnPrev.disabled = currentQuestionIndex === 0;
+  }
+
+  const isLast =
+    currentQuestionIndex === total - 1;
+
+  if (btnNext) {
+    btnNext.classList.toggle("hidden", isLast);
+  }
+
+  if (submitWrap) {
+    submitWrap.classList.toggle("hidden", !isLast);
+  }
+}
+
+
+function goNextQuestion() {
+
+  syncCurrentAnswerFromDom();
+  saveDraftAnswers();
+
+  if (
+    currentQuestionIndex <
+    currentQuestions.length - 1
+  ) {
+    currentQuestionIndex++;
+    renderQuestions();
+  }
+}
+
+
+function goPreviousQuestion() {
+
+  syncCurrentAnswerFromDom();
+  saveDraftAnswers();
+
+  if (currentQuestionIndex > 0) {
+    currentQuestionIndex--;
+    renderQuestions();
+  }
+}
 
 /* =========================================================
    8. Autosave คำตอบไว้ใน Browser
@@ -1391,27 +1141,20 @@ function getDraftKey() {
 
 function collectAnswers() {
 
+  syncCurrentAnswerFromDom();
+
   const answers = {};
 
-
   currentQuestions.forEach((item) => {
+    const value = answerState[item.id];
 
-    const selected =
-      document.querySelector(
-        `input[name="q_${item.id}"]:checked`
-      );
-
-
-    if (selected) {
-      answers[item.id] =
-        selected.value;
+    if (value) {
+      answers[item.id] = value;
     }
   });
 
-
   return answers;
 }
-
 
 function saveDraftAnswers() {
 
@@ -1425,6 +1168,7 @@ function saveDraftAnswers() {
   const payload = {
     savedAt: Date.now(),
     answers: collectAnswers(),
+    currentQuestionIndex: currentQuestionIndex,
     violations: violationCount,
     violationEvents: violationEvents
   };
@@ -1439,28 +1183,36 @@ function saveDraftAnswers() {
 
 function restoreDraftAnswers() {
 
-  const key =
-    getDraftKey();
+  const key = getDraftKey();
 
+  answerState = {};
+  currentQuestionIndex = 0;
 
   if (!key) return;
-
 
   try {
 
     const raw =
       localStorage.getItem(key);
 
-
     if (!raw) return;
-
 
     const saved =
       JSON.parse(raw);
 
+    answerState =
+      saved.answers &&
+      typeof saved.answers === "object"
+        ? { ...saved.answers }
+        : {};
 
-    const answers =
-      saved.answers || {};
+    currentQuestionIndex = Math.max(
+      0,
+      Math.min(
+        Number(saved.currentQuestionIndex || 0),
+        Math.max(0, currentQuestions.length - 1)
+      )
+    );
 
     const savedViolations = Math.max(
       0,
@@ -1468,7 +1220,10 @@ function restoreDraftAnswers() {
     );
 
     if (savedViolations > violationCount) {
-      violationCount = Math.min(savedViolations, VIOLATION_LIMIT);
+      violationCount = Math.min(
+        savedViolations,
+        VIOLATION_LIMIT
+      );
     }
 
     if (Array.isArray(saved.violationEvents)) {
@@ -1477,27 +1232,13 @@ function restoreDraftAnswers() {
         .slice(-VIOLATION_LIMIT);
     }
 
-    const violationCounter = document.getElementById("violationCount");
+    const violationCounter =
+      document.getElementById("violationCount");
+
     if (violationCounter) {
-      violationCounter.innerText = violationCount;
+      violationCounter.innerText =
+        violationCount;
     }
-
-
-    Object.entries(answers)
-      .forEach(
-        ([questionId, value]) => {
-
-          const input =
-            document.querySelector(
-              `input[name="q_${questionId}"][value="${value}"]`
-            );
-
-
-          if (input) {
-            input.checked = true;
-          }
-        }
-      );
 
   } catch (err) {
 
@@ -1508,12 +1249,31 @@ function restoreDraftAnswers() {
   }
 }
 
-
 document
   .getElementById("quizForm")
   .addEventListener(
     "change",
-    saveDraftAnswers
+    (event) => {
+
+      const target = event.target;
+
+      if (
+        target &&
+        target.matches('input[type="radio"]')
+      ) {
+
+        const item =
+          currentQuestions[currentQuestionIndex];
+
+        if (item) {
+          answerState[item.id] =
+            target.value;
+        }
+
+        saveDraftAnswers();
+        updateQuestionNavigation();
+      }
+    }
   );
 
 
@@ -1653,12 +1413,29 @@ function initAntiCheatListeners() {
     return;
   }
 
-
   antiCheatInitialized = true;
+
+  /*
+    helper:
+    เก็บเวลาที่ Browser เริ่มเสีย focus ไว้ทันที
+    เพราะบน Android/iOS timer อาจถูก suspend ก่อน callback 900 ms เดิมจะทำงาน
+  */
+  const markLeaveStart = () => {
+    const now = Date.now();
+
+    if (!blurStartedAt) {
+      blurStartedAt = now;
+    }
+
+    if (!backgroundStartedAt) {
+      backgroundStartedAt = now;
+    }
+  };
 
 
   /*
-    A) สลับแท็บ / ย่อ Browser / สลับ App
+    A) visibilitychange
+    เป็นตัวหลักสำหรับสลับแท็บ / ย่อ Browser / สลับ App
   */
   document.addEventListener(
     "visibilitychange",
@@ -1668,11 +1445,9 @@ function initAntiCheatListeners() {
         return;
       }
 
+      if (document.visibilityState === "hidden") {
 
-      if (
-        document.visibilityState ===
-        "hidden"
-      ) {
+        markLeaveStart();
 
         registerViolation(
           "ตรวจพบการสลับแท็บ ย่อหน้าต่าง หรือออกจากหน้าข้อสอบ"
@@ -1680,14 +1455,22 @@ function initAntiCheatListeners() {
 
       } else {
 
-        showPendingViolationWarning();
-
-        scheduleViolationRecovery();
-
         /*
-          ถ้ากลับเข้าหน้าแล้วเวลาเลย
-          update timer ทันที
+          fallback:
+          บาง Browser บันทึก hidden ไม่ทัน แต่กลับมา visible แล้วมี timestamp อยู่
         */
+        if (
+          !violationEpisodeActive &&
+          backgroundStartedAt &&
+          Date.now() - backgroundStartedAt >= MIN_LEAVE_MS
+        ) {
+          registerViolation(
+            "ตรวจพบการออกจากหน้าข้อสอบหรือสลับแอป"
+          );
+        }
+
+        showPendingViolationWarning();
+        scheduleViolationRecovery();
         updateRealTimer();
       }
     }
@@ -1696,8 +1479,10 @@ function initAntiCheatListeners() {
 
   /*
     B) Blur
-    event นี้ไม่นิ่งที่สุด
-    จึงรอ 900 ms ก่อนตัดสิน
+    v2.4 ไม่พึ่ง setTimeout อย่างเดียวอีกต่อไป
+    - เก็บ timestamp ทันที
+    - timer สั้นไว้ช่วยบน Desktop
+    - ถ้ามือถือ suspend timer จะตรวจซ้ำตอน focus กลับมา
   */
   window.addEventListener(
     "blur",
@@ -1707,70 +1492,148 @@ function initAntiCheatListeners() {
         return;
       }
 
+      if (IS_TOUCH_DEVICE) {
+        return;
+      }
 
-      clearTimeout(
-        blurTimer
+      markLeaveStart();
+
+      clearTimeout(blurTimer);
+
+      blurTimer = setTimeout(
+        () => {
+
+          if (!antiCheatReady()) {
+            return;
+          }
+
+          if (violationEpisodeActive) {
+            return;
+          }
+
+          if (
+            document.visibilityState === "visible" &&
+            !document.hasFocus() &&
+            blurStartedAt &&
+            Date.now() - blurStartedAt >= MIN_LEAVE_MS
+          ) {
+            registerViolation(
+              "ตรวจพบการออกจากหน้าต่างข้อสอบ"
+            );
+          }
+
+        },
+        650
       );
-
-
-      blurTimer =
-        setTimeout(
-          () => {
-
-            if (!antiCheatReady()) {
-              return;
-            }
-
-
-            /*
-              Event อื่นนับรอบนี้ไปแล้ว
-            */
-            if (
-              violationEpisodeActive
-            ) {
-              return;
-            }
-
-
-            if (
-              document.visibilityState ===
-                "visible" &&
-              !document.hasFocus()
-            ) {
-
-              registerViolation(
-                "ตรวจพบการออกจากหน้าต่างข้อสอบ"
-              );
-            }
-
-          },
-          900
-        );
     }
   );
 
 
   /*
     C) Focus กลับมา
+    จุดนี้สำคัญสำหรับมือถือ:
+    ถ้า JavaScript ถูกพักตอนออกแอป timer เดิมจะไม่ทำงาน
+    เมื่อกลับมา เราใช้เวลาที่บันทึกจาก blur ตัดสินแทน
   */
   window.addEventListener(
     "focus",
     () => {
 
-      clearTimeout(
-        blurTimer
-      );
+      clearTimeout(blurTimer);
 
+      if (
+        !IS_TOUCH_DEVICE &&
+        antiCheatReady() &&
+        !violationEpisodeActive &&
+        blurStartedAt &&
+        Date.now() - blurStartedAt >= MIN_LEAVE_MS
+      ) {
+        registerViolation(
+          "ตรวจพบการออกจากหน้าต่างข้อสอบหรือสลับแอป"
+        );
+      }
 
       showPendingViolationWarning();
-
       scheduleViolationRecovery();
+      updateRealTimer();
     }
   );
 
 
   /*
-    D) Fullscreen
+    D) pagehide / pageshow
+    เป็น fallback เพิ่มสำหรับ Mobile Browser บางรุ่น
+  */
+  window.addEventListener(
+    "pagehide",
+    () => {
+
+      if (!antiCheatReady()) {
+        return;
+      }
+
+      markLeaveStart();
+
+      registerViolation(
+        "ตรวจพบการออกจากหน้าข้อสอบ"
+      );
+    }
+  );
+
+
+  window.addEventListener(
+    "pageshow",
+    () => {
+
+      if (!antiCheatReady()) {
+        return;
+      }
+
+      showPendingViolationWarning();
+      scheduleViolationRecovery();
+      updateRealTimer();
+    }
+  );
+
+
+  /*
+    E) freeze / resume
+    Chrome บางรุ่นใช้ Page Lifecycle event เมื่อส่งหน้าเว็บไปพื้นหลัง
+  */
+  document.addEventListener(
+    "freeze",
+    () => {
+
+      if (!antiCheatReady()) {
+        return;
+      }
+
+      markLeaveStart();
+
+      registerViolation(
+        "ตรวจพบว่าหน้าข้อสอบถูกพักไว้เบื้องหลัง"
+      );
+    }
+  );
+
+
+  document.addEventListener(
+    "resume",
+    () => {
+
+      if (!antiCheatReady()) {
+        return;
+      }
+
+      showPendingViolationWarning();
+      scheduleViolationRecovery();
+      updateRealTimer();
+    }
+  );
+
+
+  /*
+    F) Fullscreen
   */
   const fullscreenHandler = () => {
 
@@ -1778,11 +1641,16 @@ function initAntiCheatListeners() {
       return;
     }
 
+    if (IS_TOUCH_DEVICE) {
+      return;
+    }
 
     if (
       isFullscreenSupported() &&
       !getFullscreenElement()
     ) {
+
+      markLeaveStart();
 
       registerViolation(
         "ตรวจพบการออกจากโหมดเต็มจอ"
@@ -1807,7 +1675,6 @@ function initAntiCheatListeners() {
   );
 }
 
-
 /* =========================================================
    11. นับการละเมิด 1 ครั้งต่อ 1 Episode
    ========================================================= */
@@ -1829,6 +1696,10 @@ async function registerViolation(reason) {
   violationEpisodeActive = true;
   clearTimeout(recoveryTimer);
 
+  if (!backgroundStartedAt) {
+    backgroundStartedAt = Date.now();
+  }
+
   violationCount++;
 
   document
@@ -1838,7 +1709,7 @@ async function registerViolation(reason) {
   pendingViolationReason = reason;
 
   /*
-    v2.2: ไม่ยิง Server ทุกครั้งที่เกิด Violation
+    v2.4: ไม่ยิง Server ทุกครั้งที่เกิด Violation
     เก็บ event ไว้ในเครื่อง แล้วส่งพร้อมคำตอบแบบ Batch ตอน Submit
     ลด Apps Script executions และ Sheet writes อย่างมากเมื่อสอบทั้งระดับ
   */
@@ -1944,6 +1815,7 @@ function showPendingViolationWarning() {
           การกดปุ่ม Swal ถือเป็น user gesture
         */
         if (
+          !IS_TOUCH_DEVICE &&
           isFullscreenSupported() &&
           !getFullscreenElement()
         ) {
@@ -2022,6 +1894,7 @@ function scheduleViolationRecovery() {
 
 
         const fullscreenOK =
+          IS_TOUCH_DEVICE ||
           !isFullscreenSupported() ||
           !!getFullscreenElement();
 
@@ -2032,9 +1905,9 @@ function scheduleViolationRecovery() {
           fullscreenOK
         ) {
 
-          violationEpisodeActive =
-            false;
-
+          violationEpisodeActive = false;
+          blurStartedAt = 0;
+          backgroundStartedAt = 0;
 
           console.log(
             "Anti-cheat: พร้อมตรวจรอบถัดไป"
@@ -2208,7 +2081,7 @@ async function submitExam(reason = "manual") {
     try {
 
       /*
-        v2.2: กระจายเวลาส่ง 0–12 วินาที เพื่อลดการชนกันตอนทั้งระดับกดส่ง
+        v2.4: กระจายเวลาส่ง 0–12 วินาที เพื่อลดการชนกันตอนทั้งระดับกดส่ง
         จากนั้น retry แบบ jitter โดยอัตโนมัติ นักเรียนไม่ต้องกดซ้ำ
       */
       await queueJitter(
